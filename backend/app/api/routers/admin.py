@@ -453,6 +453,22 @@ def _next_rang_for_liste(db: Session, liste_id: int) -> int:
     return int(current_max) + 1
 
 
+def _display_rank_by_order(db: Session, *, liste_id: int, demande_id: int) -> int | None:
+    ordered_ids = [
+        int(row[0])
+        for row in (
+            db.query(DemandeInscription.id)
+            .filter(DemandeInscription.liste_id == liste_id)
+            .order_by(DemandeInscription.date_inscription.asc(), DemandeInscription.id.asc())
+            .all()
+        )
+    ]
+    try:
+        return ordered_ids.index(int(demande_id)) + 1
+    except ValueError:
+        return None
+
+
 @router.post("/demandes/{demande_id}/transferer")
 def transferer_demande(
     demande_id: int,
@@ -472,12 +488,27 @@ def transferer_demande(
 
     from_liste = demande.liste
     from_rang = demande.rang_dans_liste
+    from_display_rank = (
+        _display_rank_by_order(db, liste_id=int(from_liste.id), demande_id=int(demande.id)) if from_liste else None
+    )
     new_rang = _next_rang_for_liste(db, to_liste.id)
     demande.liste_id = to_liste.id
     demande.rang_dans_liste = new_rang
-    db.commit()
-
+    # Le transfert est traité comme une nouvelle arrivée dans la liste cible.
+    demande.date_inscription = datetime.now(timezone.utc).date()
     enfant = demande.enfant
+    if to_liste.code == ListeCode.PRINCIPALE:
+        (
+            db.query(Enfant)
+            .filter(Enfant.parent_id == enfant.parent_id, Enfant.id != enfant.id, Enfant.is_titulaire.is_(True))
+            .update({Enfant.is_titulaire: False}, synchronize_session=False)
+        )
+        enfant.is_titulaire = True
+    else:
+        enfant.is_titulaire = False
+    db.commit()
+    to_display_rank = _display_rank_by_order(db, liste_id=int(to_liste.id), demande_id=int(demande.id))
+
     parent = enfant.parent
     admin_emails = collect_admin_emails(db)
     to = uniq_emails(([parent.email] if parent.email else []) + admin_emails)
@@ -490,9 +521,9 @@ def transferer_demande(
             parent_matricule=parent.matricule,
             enfant=f"{enfant.prenom} {enfant.nom}",
             from_liste=from_liste.code.value if from_liste else "",
-            from_rang=from_rang,
+            from_rang=from_display_rank if from_display_rank is not None else from_rang,
             to_liste=to_liste.code.value,
-            to_rang=new_rang,
+            to_rang=to_display_rank if to_display_rank is not None else new_rang,
             reason=payload.reason,
             when=when,
         ),

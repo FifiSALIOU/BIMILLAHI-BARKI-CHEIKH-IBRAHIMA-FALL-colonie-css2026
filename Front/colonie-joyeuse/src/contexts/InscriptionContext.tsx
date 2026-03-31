@@ -111,11 +111,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
     const mapped: Enfant[] = demandes.map(d => {
       const liste = mapListe(d.liste_code);
       const lien = mapLien(d.enfant_lien_parente);
-      const statut: Enfant['statut'] = d.enfant_is_titulaire
-        ? 'Titulaire'
-        : lien === 'Autre'
-          ? 'Suppléant N2'
-          : 'Suppléant N1';
+      const statut: Enfant['statut'] = mapStatut(liste);
       return {
         // We use demande_id as primary UI id to call parent action endpoints directly.
         id: String(d.id),
@@ -213,7 +209,6 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
     const mapped: Enfant[] = merged.map((d) => {
       const liste = mapListe(d.liste);
       const lienParente = mapLien(d.enfant?.lien_parente || '');
-      const isTitulaire = Boolean(d.enfant?.is_titulaire);
       const statut = String(d.statut || '').toUpperCase();
       const rang =
         typeof d.rang === 'number'
@@ -230,7 +225,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
         sexe: String(d.enfant?.sexe || '').toUpperCase() === 'F' ? 'F' : 'M',
         lienParente,
         liste,
-        statut: isTitulaire ? 'Titulaire' : lienParente === 'Autre' ? 'Suppléant N2' : 'Suppléant N1',
+        statut: mapStatut(liste),
         dateInscription: d.date_inscription,
         validation: statut === 'NON_VALIDEE' ? 'refusé' : statut === 'RETENUE' ? 'validé' : 'en_attente',
         motifRefus: d.non_validation_reason || undefined,
