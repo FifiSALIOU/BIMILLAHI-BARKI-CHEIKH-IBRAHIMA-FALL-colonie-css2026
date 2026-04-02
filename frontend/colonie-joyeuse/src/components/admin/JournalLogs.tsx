@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { Parent } from '@/data/mockData';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiRequest } from '@/lib/api';
 
 const tabs = [
   { id: 'systeme', label: 'État système', icon: Activity },
@@ -16,33 +18,74 @@ const tabs = [
 ];
 
 export default function JournalLogs() {
-  const { enfants, parents, settings, historique, addParent, addHistorique } = useInscription();
+  const { enfants, parents, settings, historique } = useInscription();
+  const { token } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('systeme');
   const [refreshing, setRefreshing] = useState(false);
+  const [stats, setStats] = useState<{
+    total_users: number;
+    total_parents: number;
+    total_enfants: number;
+    total_demandes: number;
+    selected_total: number;
+    desistements_waiting: number;
+  } | null>(null);
+  const [servicesCount, setServicesCount] = useState(0);
+  const [sitesCount, setSitesCount] = useState(0);
+  const [listesCount, setListesCount] = useState(0);
 
   const totalEnfants = enfants.length;
   const totalParents = parents.length;
   const desistements = enfants.filter(e => e.desistement).length;
 
+  const loadRealtimeData = async () => {
+    if (!token) return;
+    const [statsData, services, sites, listes] = await Promise.all([
+      apiRequest<{
+        total_users: number;
+        total_parents: number;
+        total_enfants: number;
+        total_demandes: number;
+        selected_total: number;
+        desistements_waiting: number;
+      }>('/admin/stats', { token }),
+      apiRequest<any[]>('/admin/services', { token }),
+      apiRequest<any[]>('/admin/sites', { token }),
+      apiRequest<any[]>('/admin/listes-config', { token }),
+    ]);
+    setStats(statsData);
+    setServicesCount(services.length);
+    setSitesCount(sites.length);
+    setListesCount(listes.length);
+  };
+
+  React.useEffect(() => {
+    loadRealtimeData().catch(() => {
+      // ignore transient errors
+    });
+  }, [token]);
+
   const handleRefresh = () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1000);
-    toast({ title: '✅ Données rafraîchies' });
+    loadRealtimeData()
+      .then(() => toast({ title: '✅ Données rafraîchies' }))
+      .catch(() => toast({ title: '⚠️ Échec du rafraîchissement', variant: 'destructive' }))
+      .finally(() => setRefreshing(false));
   };
 
   // DB tables data
   const dbTables = [
-    { name: 'users', records: 3, rls: true },
-    { name: 'parents', records: totalParents, rls: true },
-    { name: 'services', records: 8, rls: false },
-    { name: 'sites', records: 4, rls: false },
-    { name: 'enfants', records: totalEnfants, rls: true },
-    { name: 'listes', records: 3, rls: true },
-    { name: 'demandes_inscription', records: totalEnfants, rls: true },
-    { name: 'desistements', records: desistements, rls: true },
+    { name: 'users', records: stats?.total_users ?? totalParents, rls: true },
+    { name: 'parents', records: stats?.total_parents ?? totalParents, rls: true },
+    { name: 'services', records: servicesCount, rls: false },
+    { name: 'sites', records: sitesCount, rls: false },
+    { name: 'enfants', records: stats?.total_enfants ?? totalEnfants, rls: true },
+    { name: 'listes', records: listesCount, rls: true },
+    { name: 'demandes_inscription', records: stats?.total_demandes ?? totalEnfants, rls: true },
+    { name: 'desistements', records: stats?.desistements_waiting ?? desistements, rls: true },
     { name: 'alembic_version', records: 1, rls: false },
   ];
 
@@ -62,6 +105,7 @@ export default function JournalLogs() {
   ];
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!token) return;
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.name.endsWith('.csv')) {
@@ -94,27 +138,30 @@ export default function JournalLogs() {
           errors.push(`Ligne ${i + 1}: colonnes manquantes`);
           continue;
         }
-        const newParent: Parent = {
-          matricule: vals[matriculeIdx],
-          prenom: vals[prenomIdx],
-          nom: vals[nomIdx],
-          service: vals[serviceIdx],
-          motDePasse: 'parent123',
-          email: emailIdx !== -1 ? vals[emailIdx] : undefined,
-          telephone: telephoneIdx !== -1 ? vals[telephoneIdx] : undefined,
-          premiereConnexion: true,
-        };
-        if (parents.find(p => p.matricule === newParent.matricule)) {
-          errors.push(`Ligne ${i + 1}: matricule ${newParent.matricule} existe déjà`);
-          continue;
+        try {
+          await apiRequest('/admin/users', {
+            method: 'POST',
+            token,
+            body: JSON.stringify({
+              role: 'PARENT',
+              name: `${vals[prenomIdx]} ${vals[nomIdx]}`.trim(),
+              matricule: vals[matriculeIdx],
+              prenom: vals[prenomIdx],
+              nom: vals[nomIdx],
+              service: vals[serviceIdx],
+              email: emailIdx !== -1 ? vals[emailIdx] : undefined,
+              telephone: telephoneIdx !== -1 ? vals[telephoneIdx] : undefined,
+            }),
+          });
+          imported++;
+        } catch (err) {
+          errors.push(`Ligne ${i + 1}: ${err instanceof Error ? err.message : 'Erreur API'}`);
         }
-        addParent(newParent);
-        imported++;
       }
       const resultMsg = `${imported} parent(s) importé(s).${errors.length > 0 ? ` ${errors.length} erreur(s).` : ''}`;
       setUploadResult(resultMsg);
-      addHistorique({ utilisateur: 'Super Admin', role: 'Admin', action: 'Import CSV', details: `A importé ${imported} parent(s) depuis un fichier CSV`, cible: file.name });
       toast({ title: '✅ Import terminé', description: resultMsg });
+      await loadRealtimeData();
     } catch {
       toast({ title: '❌ Erreur', description: 'Erreur lors de la lecture du fichier.', variant: 'destructive' });
     }
