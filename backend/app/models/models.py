@@ -71,7 +71,7 @@ class Parent(Base):
     email: Mapped[str | None] = mapped_column(String(191), nullable=True)
     telephone: Mapped[str] = mapped_column(String(191), nullable=False)
     genre: Mapped[str] = mapped_column(String(191), nullable=False)
-    nin: Mapped[str] = mapped_column(String(191), nullable=False)
+    nin: Mapped[str | None] = mapped_column(String(191), nullable=True)
     adresse: Mapped[str] = mapped_column(String(191), nullable=False)
     service_text: Mapped[str] = mapped_column("service", String(191), nullable=False)
     site_text: Mapped[str] = mapped_column("site", String(191), nullable=False)

@@ -59,11 +59,11 @@ def _stash_admin_email(email: str | None) -> str | None:
     return e[:100] if e else None
 
 
-def normalize_parent_nin_for_storage(nin: str | None, *, matricule: str) -> str:
-    """Évite la contrainte unique sur `parents.nin` quand le NIN n'est pas fourni (plusieurs « - » interdits)."""
+def normalize_parent_nin_for_storage(nin: str | None, *, matricule: str) -> str | None:
+    """Stocke NULL si le NIN n'est pas fourni (pas de valeur factice)."""
     s = (nin or "").strip()
     if not s or s == "-":
-        return f"non-renseigne:{matricule}"[:191]
+        return None
     return s[:191]
 
 
