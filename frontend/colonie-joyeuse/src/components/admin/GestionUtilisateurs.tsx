@@ -37,7 +37,6 @@ export default function GestionUtilisateurs() {
   const [newParentPrenom, setNewParentPrenom] = useState('');
   const [newParentNom, setNewParentNom] = useState('');
   const [newParentService, setNewParentService] = useState('');
-  const [newParentPassword, setNewParentPassword] = useState('parent123');
   const [newParentEmail, setNewParentEmail] = useState('');
   const [newParentTelephone, setNewParentTelephone] = useState('');
   const [newParentSite, setNewParentSite] = useState('');
@@ -280,7 +279,7 @@ export default function GestionUtilisateurs() {
       });
       await refreshUsers();
       setCreateParentOpen(false);
-      setNewParentMatricule(''); setNewParentPrenom(''); setNewParentNom(''); setNewParentService(''); setNewParentPassword('parent123'); setNewParentEmail(''); setNewParentTelephone(''); setNewParentSite('');
+      setNewParentMatricule(''); setNewParentPrenom(''); setNewParentNom(''); setNewParentService(''); setNewParentEmail(''); setNewParentTelephone(''); setNewParentSite('');
       toast({ title: '✅ Parent créé' });
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : 'Erreur création parent', variant: 'destructive' });
@@ -597,7 +596,9 @@ export default function GestionUtilisateurs() {
               <div className="space-y-2"><Label>Email</Label><Input value={newParentEmail} onChange={e => setNewParentEmail(e.target.value)} type="email" className="rounded-lg" /></div>
               <div className="space-y-2"><Label>Téléphone</Label><Input value={newParentTelephone} onChange={e => setNewParentTelephone(e.target.value)} className="rounded-lg" /></div>
             </div>
-            <div className="space-y-2"><Label>Mot de passe</Label><Input value={newParentPassword} onChange={e => setNewParentPassword(e.target.value)} type="password" className="rounded-lg" /></div>
+            <p className="text-xs text-muted-foreground">
+              Le mot de passe par défaut est Passer123. Le parent devra le changer à sa première connexion.
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateParentOpen(false)} className="rounded-lg">Annuler</Button>
