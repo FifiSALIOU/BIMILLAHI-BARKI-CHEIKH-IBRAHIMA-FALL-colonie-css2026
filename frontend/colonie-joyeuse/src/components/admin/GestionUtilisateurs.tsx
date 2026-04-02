@@ -29,7 +29,6 @@ export default function GestionUtilisateurs() {
   const [newNom, setNewNom] = useState('');
   const [newPrenom, setNewPrenom] = useState('');
   const [newRole, setNewRole] = useState<'gestionnaire' | 'super_admin'>('gestionnaire');
-  const [newPassword, setNewPassword] = useState('admin123');
   const [newTelephone, setNewTelephone] = useState('');
 
   // Parent creation
@@ -203,7 +202,7 @@ export default function GestionUtilisateurs() {
       });
       await refreshUsers();
       setCreateOpen(false);
-      setNewEmail(''); setNewNom(''); setNewPrenom(''); setNewPassword('admin123'); setNewTelephone('');
+      setNewEmail(''); setNewNom(''); setNewPrenom(''); setNewTelephone('');
       toast({ title: '✅ Administrateur créé' });
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : 'Erreur création admin', variant: 'destructive' });
@@ -507,7 +506,6 @@ export default function GestionUtilisateurs() {
             </div>
             <div className="space-y-2"><Label>Email</Label><Input value={newEmail} onChange={e => setNewEmail(e.target.value)} type="email" className="rounded-lg" /></div>
             <div className="space-y-2"><Label>Téléphone</Label><Input value={newTelephone} onChange={e => setNewTelephone(e.target.value)} placeholder="77 123 45 67" className="rounded-lg" /></div>
-            <div className="space-y-2"><Label>Mot de passe</Label><Input value={newPassword} onChange={e => setNewPassword(e.target.value)} type="password" className="rounded-lg" /></div>
             <div className="space-y-2">
               <Label>Rôle</Label>
               <Select value={newRole} onValueChange={(v: any) => setNewRole(v)}>
@@ -518,6 +516,10 @@ export default function GestionUtilisateurs() {
                 </SelectContent>
               </Select>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Le mot de passe temporaire est généré automatiquement et envoyé par email.
+              Le changement est obligatoire à la première connexion.
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)} className="rounded-lg">Annuler</Button>
