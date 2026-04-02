@@ -40,6 +40,7 @@ export default function ParentLayout({ initialPage }: Props) {
     inscrire: '/dashboard/inscrire',
     enfants: '/dashboard/mes-enfants',
     toutes_inscriptions: '/dashboard/toutes-inscriptions',
+    // Route parent dédiée pour éviter le conflit avec la route admin.
     liste_finale_parent: '/dashboard/liste-finale',
   };
 

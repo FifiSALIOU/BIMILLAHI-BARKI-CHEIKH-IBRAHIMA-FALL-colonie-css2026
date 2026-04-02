@@ -45,7 +45,7 @@ export default function AdminLayout({ initialPage }: Props) {
     liste_principale: '/dashboard/liste/principale',
     liste_n1: '/dashboard/liste/attente-1',
     liste_n2: '/dashboard/liste/attente-2',
-    liste_finale: '/dashboard/liste-finale',
+    liste_finale: '/dashboard/admin/liste-finale',
     statistiques: '/dashboard/statistiques',
     historique: '/dashboard/historique',
     utilisateurs: '/dashboard/admin/utilisateurs',
