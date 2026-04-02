@@ -591,7 +591,7 @@ export default function GestionUtilisateurs() {
               <Label>Service</Label>
               <Select value={newParentService} onValueChange={setNewParentService}>
                 <SelectTrigger className="rounded-lg"><SelectValue placeholder="Sélectionner un service" /></SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-56 overflow-y-auto">
                   {services.map((s) => (
                     <SelectItem key={s.id} value={s.nom}>{s.nom}</SelectItem>
                   ))}
@@ -602,7 +602,7 @@ export default function GestionUtilisateurs() {
               <Label>Site</Label>
               <Select value={newParentSite} onValueChange={setNewParentSite}>
                 <SelectTrigger className="rounded-lg"><SelectValue placeholder="Sélectionner un site" /></SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-56 overflow-y-auto">
                   {sites.map(s => (
                     <SelectItem key={s.id} value={s.code}>{s.nom}</SelectItem>
                   ))}
@@ -639,7 +639,7 @@ export default function GestionUtilisateurs() {
                 <Label>Service</Label>
                 <Select value={editingParent.service || ''} onValueChange={v => setEditingParent({ ...editingParent, service: v })}>
                   <SelectTrigger className="rounded-lg"><SelectValue placeholder="Sélectionner un service" /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-56 overflow-y-auto">
                     {services.map((s) => (
                       <SelectItem key={s.id} value={s.nom}>{s.nom}</SelectItem>
                     ))}
@@ -650,7 +650,7 @@ export default function GestionUtilisateurs() {
                 <Label>Site</Label>
                 <Select value={editingParent.site || ''} onValueChange={v => setEditingParent({ ...editingParent, site: v })}>
                   <SelectTrigger className="rounded-lg"><SelectValue placeholder="Sélectionner un site" /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-56 overflow-y-auto">
                     {sites.map(s => (
                       <SelectItem key={s.id} value={s.code}>{s.nom}</SelectItem>
                     ))}
