@@ -1,0 +1,352 @@
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { useInscription } from '@/contexts/InscriptionContext';
+import { calculateAge, Enfant } from '@/data/mockData';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { FileDown, Search, Filter, Eye, Award, CheckCircle2, HandMetal, AlertTriangle, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { toast } from '@/hooks/use-toast';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import { exportStyledExcel } from '@/lib/excelExport';
+
+export default function ListeFinale() {
+  const { getListeFinale, getEnfantsDesistesFinale, validerDesistement, parents, settings, addHistorique, isListeFinaleComplete, genererListeFinale, listeFinaleGeneree } = useInscription();
+  const enfantsRetenus = getListeFinale();
+  const enfantsDesistes = getEnfantsDesistesFinale();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterSexe, setFilterSexe] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<'retenus' | 'desistes'>('retenus');
+  const [detailEnfant, setDetailEnfant] = useState<Enfant | null>(null);
+  const [confirmDesistOpen, setConfirmDesistOpen] = useState(false);
+  const [desistTarget, setDesistTarget] = useState<Enfant | null>(null);
+
+  const capaciteLabel = settings.capaciteMax !== null ? settings.capaciteMax : '∞';
+  const isComplete = isListeFinaleComplete();
+
+  const now = new Date();
+  const dateFin = settings.dateFinInscriptions ? new Date(settings.dateFinInscriptions + 'T23:59:59') : null;
+  const inscriptionsCloturees = dateFin ? now > dateFin : false;
+
+  const getStatutBadge = (statut: string) => {
+    switch (statut) {
+      case 'Titulaire': return 'bg-emerald-50 text-emerald-700';
+      case 'Suppléant N1': return 'bg-accent/10 text-accent';
+      case 'Suppléant N2': return 'bg-primary/10 text-primary';
+      default: return 'bg-muted text-muted-foreground';
+    }
+  };
+
+  const getListeLabel = (liste: string) => {
+    switch (liste) {
+      case 'principale': return 'Liste Principale';
+      case 'attente_n1': return "Liste N°1";
+      case 'attente_n2': return "Liste N°2";
+      default: return liste;
+    }
+  };
+
+  const filterList = (list: Enfant[]) => list.filter(e => {
+    const p = parents.find(x => x.matricule === e.parentMatricule);
+    const matchSearch = searchTerm === '' ||
+      e.parentMatricule.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      e.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      e.prenom.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p?.nom || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchSexe = filterSexe === 'all' || e.sexe === filterSexe;
+    return matchSearch && matchSexe;
+  });
+
+  const filteredRetenus = filterList(enfantsRetenus);
+  const filteredDesistes = filterList(enfantsDesistes);
+
+  const handleValiderDesistement = () => {
+    if (!desistTarget) return;
+    validerDesistement(desistTarget.id);
+    addHistorique({ utilisateur: 'Gestionnaire', role: 'Admin', action: 'Validation désistement (finale)', details: `A validé le désistement de ${desistTarget.prenom} ${desistTarget.nom} depuis la liste finale`, cible: `${desistTarget.prenom} ${desistTarget.nom}` });
+    toast({ title: '✅ Désistement validé', description: `${desistTarget.prenom} ${desistTarget.nom} a été retiré(e) de la liste finale. La liste se mettra à jour automatiquement.` });
+    setConfirmDesistOpen(false); setDesistTarget(null);
+  };
+
+  const handleGenererListe = () => {
+    if (!inscriptionsCloturees || listeFinaleGeneree) return;
+    genererListeFinale();
+    toast({ title: '✅ Liste finale générée', description: 'La liste finale a été générée automatiquement selon la priorité Principale > N1 > N2.' });
+  };
+
+  const exportList = (list: Enfant[], filename: string, format: 'csv' | 'pdf', isDesistes = false) => {
+    const baseHeaders = ['Rang', 'Matricule', 'Nom Parent', 'Prénom Parent', 'Téléphone', 'Service', 'Agence', 'Nom Enfant', 'Prénom Enfant', 'Âge', 'Sexe', 'Statut', "Liste d'origine"];
+    const headers = isDesistes ? [...baseHeaders, 'Date du désistement'] : baseHeaders;
+    const rows = list.map((e, i) => {
+      const p = parents.find(x => x.matricule === e.parentMatricule);
+      const baseRow = [i + 1, e.parentMatricule, p?.nom || '', p?.prenom || '', p?.telephone || '', p?.service || '', p?.site || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'Masculin' : 'Féminin', e.statut, getListeLabel(e.liste)];
+      if (isDesistes) {
+        baseRow.push(e.dateDesistement ? new Date(e.dateDesistement).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—');
+      }
+      return baseRow;
+    });
+
+    if (format === 'csv') {
+      exportStyledExcel(headers, rows, isDesistes ? 'Enfants Désistés' : 'Liste Finale', `${filename}.xlsx`);
+    } else {
+      const doc = new jsPDF({ orientation: 'landscape' });
+      doc.setFontSize(16);
+      doc.text(isDesistes ? 'Liste des enfants désistés' : 'Liste finale des enfants retenus', 14, 15);
+      doc.setFontSize(10);
+      doc.text(`${list.length} enfant(s)`, 14, 22);
+      autoTable(doc, {
+        head: [headers],
+        body: rows.map(r => r.map(c => String(c))),
+        startY: 28,
+        styles: { fontSize: 7 },
+        headStyles: { fillColor: isDesistes ? [245, 158, 11] : [16, 185, 129] },
+      });
+      doc.save(`${filename}.pdf`);
+    }
+  };
+
+  const handleHeaderExport = (format: 'csv' | 'pdf') => {
+    if (activeTab === 'desistes') {
+      exportList(filteredDesistes, 'enfants_desistes', format, true);
+      return;
+    }
+    exportList(filteredRetenus, 'liste_finale', format);
+  };
+
+  const renderTable = (list: Enfant[], showDesistAction: boolean, isDesistes = false) => (
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/50">
+            <TableHead className="font-semibold w-16">Rang</TableHead>
+            <TableHead className="font-semibold">Matricule</TableHead>
+            <TableHead className="font-semibold">Nom du parent</TableHead>
+            <TableHead className="font-semibold">Prénom du parent</TableHead>
+            <TableHead className="font-semibold">Téléphone</TableHead>
+            <TableHead className="font-semibold">Service</TableHead>
+            <TableHead className="font-semibold">Agence</TableHead>
+            <TableHead className="font-semibold">Prénom Enfant</TableHead>
+            <TableHead className="font-semibold">Nom Enfant</TableHead>
+            <TableHead className="font-semibold">Âge</TableHead>
+            <TableHead className="font-semibold">Sexe</TableHead>
+            <TableHead className="font-semibold">Statut</TableHead>
+            <TableHead className="font-semibold">Liste d'origine</TableHead>
+            {isDesistes && <TableHead className="font-semibold">Date du désistement</TableHead>}
+            <TableHead className="font-semibold">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {list.length === 0 ? (
+            <TableRow><TableCell colSpan={isDesistes ? 15 : 14} className="text-center py-12 text-muted-foreground">Aucun enfant</TableCell></TableRow>
+          ) : (
+            list.map((e, i) => {
+              const p = parents.find(x => x.matricule === e.parentMatricule);
+              return (
+                <TableRow key={e.id} className={e.desistement === 'validé' ? 'opacity-60' : ''}>
+                  <TableCell className="font-bold text-foreground text-center">{i + 1}</TableCell>
+                  <TableCell className="font-mono tabular-nums text-sm">{e.parentMatricule}</TableCell>
+                  <TableCell>{p?.nom || '—'}</TableCell>
+                  <TableCell>{p?.prenom || '—'}</TableCell>
+                  <TableCell className="text-sm">{p?.telephone || '—'}</TableCell>
+                  <TableCell className="text-sm">{p?.service || '—'}</TableCell>
+                  <TableCell className="text-sm">{p?.site || '—'}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      {e.prenom}
+                      {e.reinscrit && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-primary/10 text-primary">Réinscrit</span>}
+                    </div>
+                  </TableCell>
+                  <TableCell className="font-medium">{e.nom}</TableCell>
+                  <TableCell>{calculateAge(e.dateNaissance)} ans</TableCell>
+                  <TableCell>{e.sexe === 'M' ? 'M' : 'F'}</TableCell>
+                  <TableCell><span className={`text-xs font-medium px-2 py-0.5 rounded-md ${getStatutBadge(e.statut)}`}>{e.statut}</span></TableCell>
+                  <TableCell><span className="text-xs font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground">{getListeLabel(e.liste)}</span></TableCell>
+                  {isDesistes && <TableCell className="text-sm">{e.dateDesistement ? new Date(e.dateDesistement).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</TableCell>}
+                  <TableCell>
+                    <div className="flex gap-1 flex-wrap">
+                      {showDesistAction && e.desistement === 'demandé' && (
+                        <Button size="sm" onClick={() => { setDesistTarget(e); setConfirmDesistOpen(true); }} className="gap-1 text-xs rounded-lg bg-accent hover:bg-accent/90 text-white h-7 px-2">
+                          <CheckCircle2 className="w-3 h-3" />Valider désist.
+                        </Button>
+                      )}
+                      {showDesistAction && e.desistement === 'validé' && (
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-destructive/10 text-destructive">Désisté ✓</span>
+                      )}
+                      <Button size="sm" variant="outline" onClick={() => setDetailEnfant(e)} className="gap-1 text-xs rounded-lg h-7">
+                        <Eye className="w-3 h-3" />Voir détails
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  );
+
+  return (
+    <div className="max-w-7xl mx-auto space-y-6">
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center"><Award className="w-5 h-5 text-emerald-600" /></div>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Liste finale des enfants retenus</h1>
+            <p className="text-muted-foreground mt-1"><strong>{enfantsRetenus.length}</strong>/{capaciteLabel} enfant(s) retenu(s) pour la colonie</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={handleGenererListe}
+            disabled={!inscriptionsCloturees || listeFinaleGeneree}
+            className="gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:pointer-events-none"
+          >
+              <Sparkles className="w-4 h-4" />Générer la liste finale
+          </Button>
+          <Button onClick={() => handleHeaderExport('csv')} variant="outline" className="gap-2 rounded-lg"><FileDown className="w-4 h-4" />Export Excel</Button>
+          <Button onClick={() => handleHeaderExport('pdf')} variant="outline" className="gap-2 rounded-lg"><FileDown className="w-4 h-4" />Export PDF</Button>
+        </div>
+      </motion.div>
+
+      {/* Info about auto-generation */}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+        <strong>ℹ️ Liste automatique :</strong> La liste finale se génère uniquement <strong>après la clôture des inscriptions</strong>, selon la priorité <strong>Liste Principale</strong>, puis <strong>Liste N°1</strong>, puis <strong>Liste N°2</strong>. Les boutons <strong>Approuver</strong> et <strong>Refuser</strong> servent seulement à valider les informations. En cas de désistement validé, la liste se complète automatiquement avec l'enfant suivant selon cet ordre de priorité.
+      </motion.div>
+
+      {!inscriptionsCloturees && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+          Le bouton <strong>Générer la liste finale</strong> sera activé uniquement après la fin des inscriptions.
+        </div>
+      )}
+
+      {/* Progress */}
+      {settings.capaciteMax !== null && (
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-foreground">Taux de remplissage</span>
+            <span className="text-sm font-bold text-foreground">{enfantsRetenus.length}/{settings.capaciteMax}</span>
+          </div>
+          <div className="h-3 bg-muted rounded-full overflow-hidden">
+            <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${Math.min((enfantsRetenus.length / settings.capaciteMax) * 100, 100)}%` }} />
+          </div>
+          {isComplete ? (
+            <p className="text-xs font-medium text-emerald-700 mt-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+              ✅ La liste finale est complète ({settings.capaciteMax}/{settings.capaciteMax} enfants).
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground mt-2">Il reste {settings.capaciteMax - enfantsRetenus.length} place(s) disponible(s).</p>
+          )}
+        </div>
+      )}
+
+      {/* Filters */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="flex flex-wrap gap-3">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input placeholder="Rechercher..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9 rounded-lg" />
+        </div>
+        <Select value={filterSexe} onValueChange={setFilterSexe}>
+          <SelectTrigger className="w-[140px] rounded-lg"><Filter className="w-3 h-3 mr-2" /><SelectValue placeholder="Sexe" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tous</SelectItem>
+            <SelectItem value="M">Masculin</SelectItem>
+            <SelectItem value="F">Féminin</SelectItem>
+          </SelectContent>
+        </Select>
+      </motion.div>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'retenus' | 'desistes')}>
+        <TabsList className="rounded-lg">
+          <TabsTrigger value="retenus" className="gap-2 rounded-lg"><Award className="w-4 h-4" />Enfants retenus ({enfantsRetenus.length})</TabsTrigger>
+          <TabsTrigger value="desistes" className="gap-2 rounded-lg"><AlertTriangle className="w-4 h-4" />Enfants désistés ({enfantsDesistes.length})</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="retenus" className="mt-4">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-card rounded-xl shadow-card border border-border">
+            {renderTable(filteredRetenus, false, false)}
+          </motion.div>
+        </TabsContent>
+
+        <TabsContent value="desistes" className="mt-4">
+          <div className="flex gap-2 mb-4">
+            <Button onClick={() => exportList(filteredDesistes, 'enfants_desistes', 'csv', true)} variant="outline" className="gap-2 rounded-lg"><FileDown className="w-4 h-4" />Export Excel</Button>
+            <Button onClick={() => exportList(filteredDesistes, 'enfants_desistes', 'pdf', true)} variant="outline" className="gap-2 rounded-lg"><FileDown className="w-4 h-4" />Export PDF</Button>
+          </div>
+          {enfantsDesistes.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+              <p className="text-xs text-amber-800">
+                <strong>⚠️ Attention :</strong> Ces enfants étaient dans la liste finale mais leurs parents ont demandé un désistement. Validez le désistement pour retirer l'enfant. La liste se complétera automatiquement avec l'enfant suivant.
+              </p>
+            </div>
+          )}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-card rounded-xl shadow-card border border-border">
+            {renderTable(filteredDesistes, true, true)}
+          </motion.div>
+        </TabsContent>
+      </Tabs>
+
+      {/* Detail Dialog */}
+      <Dialog open={!!detailEnfant} onOpenChange={() => setDetailEnfant(null)}>
+        <DialogContent className="sm:max-w-lg rounded-xl">
+          <DialogHeader><DialogTitle className="text-foreground">Détails de l'enfant</DialogTitle></DialogHeader>
+          {detailEnfant && (() => {
+            const p = parents.find(x => x.matricule === detailEnfant.parentMatricule);
+            return (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {detailEnfant.desistement === 'validé' && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-destructive/10 text-destructive">Désistement validé</span>}
+                  {detailEnfant.desistement === 'demandé' && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-amber-50 text-amber-700">⏳ Désistement demandé</span>}
+                  {!detailEnfant.desistement && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-700">✅ Retenu</span>}
+                  {detailEnfant.reinscrit && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-primary/10 text-primary">Réinscrit</span>}
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-foreground border-b border-border pb-1">Parent</h3>
+                    <div><span className="text-muted-foreground">Matricule :</span> <span className="font-mono">{detailEnfant.parentMatricule}</span></div>
+                    <div><span className="text-muted-foreground">Nom :</span> {p?.nom}</div>
+                    <div><span className="text-muted-foreground">Prénom :</span> {p?.prenom}</div>
+                    <div><span className="text-muted-foreground">Service :</span> {p?.service}</div>
+                  </div>
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-foreground border-b border-border pb-1">Enfant</h3>
+                    <div><span className="text-muted-foreground">Nom :</span> {detailEnfant.nom}</div>
+                    <div><span className="text-muted-foreground">Prénom :</span> {detailEnfant.prenom}</div>
+                    <div><span className="text-muted-foreground">Âge :</span> {calculateAge(detailEnfant.dateNaissance)} ans</div>
+                    <div><span className="text-muted-foreground">Sexe :</span> {detailEnfant.sexe === 'M' ? 'Masculin' : 'Féminin'}</div>
+                    <div><span className="text-muted-foreground">Lien :</span> {detailEnfant.lienParente}</div>
+                    <div><span className="text-muted-foreground">Liste :</span> {getListeLabel(detailEnfant.liste)}</div>
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground pt-2 border-t border-border">Inscrit le {new Date(detailEnfant.dateInscription).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm Désistement */}
+      <Dialog open={confirmDesistOpen} onOpenChange={setConfirmDesistOpen}>
+        <DialogContent className="sm:max-w-md rounded-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center"><HandMetal className="w-5 h-5 text-amber-600" /></div>
+              <DialogTitle className="text-foreground">Valider le désistement</DialogTitle>
+            </div>
+            <DialogDescription className="pt-2">Confirmez-vous la validation du désistement de <strong>{desistTarget?.prenom} {desistTarget?.nom}</strong> ?<br /><br />Cet enfant sera retiré de la liste finale. La place sera automatiquement attribuée à l'enfant suivant selon l'ordre de priorité (Principale → N1 → N2).</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDesistOpen(false)} className="rounded-lg">Annuler</Button>
+            <Button onClick={handleValiderDesistement} className="rounded-lg bg-accent text-white hover:bg-accent/90">Valider le désistement</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

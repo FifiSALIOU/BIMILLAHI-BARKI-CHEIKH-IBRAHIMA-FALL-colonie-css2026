@@ -29,8 +29,16 @@ class Settings(BaseSettings):
 
     def cors_origins_list(self) -> List[str]:
         if not self.cors_allow_origins:
-            return []
-        return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
+            return [
+                "http://localhost:8080",
+                "http://127.0.0.1:8080",
+            ]
+        origins = [o.strip().strip('"').strip("'") for o in self.cors_allow_origins.split(",") if o.strip()]
+        # Toujours autoriser les hôtes dev standards du frontend.
+        for dev_origin in ("http://localhost:8080", "http://127.0.0.1:8080"):
+            if dev_origin not in origins:
+                origins.append(dev_origin)
+        return origins
 
 
 @lru_cache
