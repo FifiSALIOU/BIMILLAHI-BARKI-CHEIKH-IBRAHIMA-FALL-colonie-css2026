@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Plus, Pencil, Trash2, MapPin, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import ImportExcel from './ImportExcel';
+import { apiRequest } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface SiteConfig {
   id: string;
@@ -17,32 +19,75 @@ interface SiteConfig {
   description: string;
 }
 
-const INITIAL_SITES: SiteConfig[] = [
-  { id: 's1', nom: 'VDN', code: 'VDN', description: '' },
-  { id: 's2', nom: 'ZIGUINCHOR', code: 'ZIG', description: '' },
-  { id: 's3', nom: 'MBOUR', code: 'MBR', description: '' },
-];
-
 export default function GestionSites() {
-  const [sites, setSites] = useState<SiteConfig[]>([...INITIAL_SITES]);
+  const { token } = useAuth();
+  const [sites, setSites] = useState<SiteConfig[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<SiteConfig | null>(null);
   const [form, setForm] = useState({ nom: '', code: '', description: '' });
   const [codeError, setCodeError] = useState('');
   const [importOpen, setImportOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleImportSites = (data: any[]) => {
+  const loadSites = async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const data = await apiRequest<Array<{ id: number; nom: string; code: number | string; description?: string | null }>>('/admin/sites', { token });
+      setSites(data.map((s) => ({
+        id: String(s.id),
+        nom: s.nom,
+        code: String(s.code),
+        description: s.description || '',
+      })));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Impossible de charger les sites');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSites();
+  }, [token]);
+
+  const handleImportSites = async (data: any[]) => {
+    if (!token) return { success: 0, errors: [{ ligne: 1, message: 'Session expirée. Veuillez vous reconnecter.' }] };
     let success = 0;
     const errors: { ligne: number; message: string }[] = [];
-    const existingCodes = new Set(sites.map(s => s.code));
-    data.forEach((row, i) => {
-      if (!row.nom || !row.code) { errors.push({ ligne: i + 2, message: 'Champs obligatoires manquants (nom, code)' }); return; }
-      const code = row.code.toUpperCase().replace(/\s/g, '');
-      if (existingCodes.has(code)) { errors.push({ ligne: i + 2, message: `Code "${code}" déjà existant` }); return; }
-      existingCodes.add(code);
-      setSites(prev => [...prev, { id: `s_${Date.now()}_${i}`, nom: row.nom, code, description: row.description || '' }]);
-      success++;
-    });
+    const existingCodes = new Set(sites.map((s) => s.code));
+    for (let i = 0; i < data.length; i += 1) {
+      const row = data[i];
+      if (!row.nom || !row.code) {
+        errors.push({ ligne: i + 2, message: 'Champs obligatoires manquants (nom, code)' });
+        continue;
+      }
+      const code = String(row.code).replace(/\D/g, '');
+      if (!code) {
+        errors.push({ ligne: i + 2, message: 'Le code doit être numérique' });
+        continue;
+      }
+      if (existingCodes.has(code)) {
+        errors.push({ ligne: i + 2, message: `Code "${code}" déjà existant` });
+        continue;
+      }
+      try {
+        await apiRequest('/admin/sites', {
+          method: 'POST',
+          token,
+          body: JSON.stringify({
+            nom: String(row.nom).trim(),
+            code,
+            description: String(row.description || '').trim(),
+          }),
+        });
+        existingCodes.add(code);
+        success++;
+      } catch (e) {
+        errors.push({ ligne: i + 2, message: e instanceof Error ? e.message : 'Erreur API' });
+      }
+    }
+    await loadSites();
     return { success, errors };
   };
 
@@ -61,13 +106,14 @@ export default function GestionSites() {
   };
 
   const handleCodeChange = (value: string) => {
-    const cleaned = value.toUpperCase().replace(/\s/g, '');
-    setForm(f => ({ ...f, code: cleaned }));
-    const isDuplicate = sites.some(s => s.code === cleaned && s.id !== editingSite?.id);
+    const cleaned = value.replace(/\D/g, '');
+    setForm((f) => ({ ...f, code: cleaned }));
+    const isDuplicate = sites.some((s) => s.code === cleaned && s.id !== editingSite?.id);
     setCodeError(isDuplicate ? 'Ce code existe déjà, veuillez en choisir un autre' : '');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!token) return;
     if (!form.nom.trim() || !form.code.trim()) {
       toast.error('Le nom et le code sont obligatoires');
       return;
@@ -76,24 +122,48 @@ export default function GestionSites() {
       toast.error(codeError);
       return;
     }
-    const isDuplicate = sites.some(s => s.code === form.code && s.id !== editingSite?.id);
+    const isDuplicate = sites.some((s) => s.code === form.code && s.id !== editingSite?.id);
     if (isDuplicate) {
       toast.error('Ce code existe déjà, veuillez en choisir un autre');
       return;
     }
-    if (editingSite) {
-      setSites(prev => prev.map(s => s.id === editingSite.id ? { ...s, ...form } : s));
-      toast.success('Agence modifiée avec succès');
-    } else {
-      setSites(prev => [...prev, { id: `s_${Date.now()}`, ...form }]);
-      toast.success('Agence ajoutée avec succès');
+    try {
+      const payload = {
+        nom: form.nom.trim(),
+        code: form.code.trim(),
+        description: form.description.trim(),
+      };
+      if (editingSite) {
+        await apiRequest(`/admin/sites/${Number(editingSite.id)}`, {
+          method: 'PATCH',
+          token,
+          body: JSON.stringify(payload),
+        });
+        toast.success('Agence modifiée avec succès');
+      } else {
+        await apiRequest('/admin/sites', {
+          method: 'POST',
+          token,
+          body: JSON.stringify(payload),
+        });
+        toast.success('Agence ajoutée avec succès');
+      }
+      setDialogOpen(false);
+      await loadSites();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erreur lors de la sauvegarde');
     }
-    setDialogOpen(false);
   };
 
-  const handleDelete = (id: string) => {
-    setSites(prev => prev.filter(s => s.id !== id));
-    toast.success('Agence supprimée');
+  const handleDelete = async (id: string) => {
+    if (!token) return;
+    try {
+      await apiRequest(`/admin/sites/${Number(id)}`, { method: 'DELETE', token });
+      toast.success('Agence supprimée');
+      await loadSites();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erreur lors de la suppression');
+    }
   };
 
   return (
@@ -124,7 +194,7 @@ export default function GestionSites() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sites.map(site => (
+              {sites.map((site) => (
                 <TableRow key={site.id}>
                   <TableCell><code className="text-xs bg-muted px-2 py-1 rounded font-semibold">{site.code}</code></TableCell>
                   <TableCell className="font-semibold">{site.nom}</TableCell>
@@ -137,7 +207,10 @@ export default function GestionSites() {
                   </TableCell>
                 </TableRow>
               ))}
-              {sites.length === 0 && (
+              {loading && (
+                <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">Chargement...</TableCell></TableRow>
+              )}
+              {!loading && sites.length === 0 && (
                 <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">Aucune agence configurée</TableCell></TableRow>
               )}
             </TableBody>
@@ -151,17 +224,17 @@ export default function GestionSites() {
           <div className="space-y-4">
             <div>
               <Label>Nom <span className="text-destructive">*</span></Label>
-              <Input value={form.nom} onChange={e => setForm(f => ({ ...f, nom: e.target.value }))} placeholder="Ex: VDN, ZIGUINCHOR, MBOUR" />
+              <Input value={form.nom} onChange={(e) => setForm((f) => ({ ...f, nom: e.target.value }))} placeholder="Ex: VDN, ZIGUINCHOR, MBOUR" />
             </div>
             <div>
               <Label>Code <span className="text-destructive">*</span></Label>
-              <Input value={form.code} onChange={e => handleCodeChange(e.target.value)} placeholder="Ex: VDN, ZIG, MBR (majuscules, sans espace)" />
+              <Input value={form.code} onChange={(e) => handleCodeChange(e.target.value)} placeholder="Ex: 101, 102, 103 (chiffres uniquement)" />
               {codeError && <p className="text-destructive text-sm mt-1">{codeError}</p>}
-              {!codeError && form.code && <p className="text-muted-foreground text-xs mt-1">Majuscules uniquement, sans espace</p>}
+              {!codeError && form.code && <p className="text-muted-foreground text-xs mt-1">Code numérique uniquement</p>}
             </div>
             <div>
               <Label>Description <span className="text-muted-foreground text-xs">(optionnel)</span></Label>
-              <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Description de l'agence" />
+              <Textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Description de l'agence" />
             </div>
           </div>
           <DialogFooter>
@@ -177,8 +250,8 @@ export default function GestionSites() {
         singleEntity
         entities={[{
           value: 'sites',
-          config: { label: 'Agences', colonnes: ['nom', 'code', 'description'], description: 'Colonnes requises : nom, code (majuscules, sans espace). Optionnelle : description.' },
-          onImport: handleImportSites,
+          config: { label: 'Agences', colonnes: ['nom', 'code', 'description'], description: 'Colonnes requises : nom, code (numérique). Optionnelle : description.' },
+          onImport: ((data: any[]) => handleImportSites(data)) as any,
         }]}
       />
     </div>

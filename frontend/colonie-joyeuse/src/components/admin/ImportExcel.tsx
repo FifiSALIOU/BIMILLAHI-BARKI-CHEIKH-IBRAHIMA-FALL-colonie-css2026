@@ -23,7 +23,7 @@ export interface EntityConfig {
 interface EntityOption {
   value: string;
   config: EntityConfig;
-  onImport: (data: any[]) => ImportResult;
+  onImport: (data: any[]) => ImportResult | Promise<ImportResult>;
 }
 
 interface Props {
@@ -76,14 +76,14 @@ export default function ImportExcel({ open, onOpenChange, entities, singleEntity
     reader.readAsArrayBuffer(file);
   };
 
-  const handleImport = () => {
+  const handleImport = async () => {
     if (!currentEntity) return;
     const normalized = previewData.map(row => {
       const n: any = {};
       Object.keys(row).forEach(k => { n[k.toLowerCase().trim()] = String(row[k]).trim(); });
       return n;
     });
-    const res = currentEntity.onImport(normalized);
+    const res = await currentEntity.onImport(normalized);
     setResult(res);
     setStep('result');
     if (res.success > 0) toast({ title: `✅ ${res.success} ${currentEntity.config.label} importé(s)` });
