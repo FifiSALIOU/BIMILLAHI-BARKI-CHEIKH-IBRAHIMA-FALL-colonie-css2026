@@ -45,6 +45,13 @@ def _admin_contact_email(u: User) -> str | None:
     return None
 
 
+def _public_parent_telephone(value: str | None) -> str | None:
+    v = (value or "").strip()
+    if not v or v.startswith("tel:"):
+        return None
+    return v
+
+
 def build_user_out(u: User) -> UserOut:
     email = _admin_contact_email(u)
     parent_prenom = parent_nom = parent_service = parent_site_code = parent_telephone = None
@@ -53,7 +60,7 @@ def build_user_out(u: User) -> UserOut:
         parent_prenom = pp.prenom
         parent_nom = pp.nom
         parent_service = pp.service_text
-        parent_telephone = pp.telephone
+        parent_telephone = _public_parent_telephone(pp.telephone)
         parent_site_code = str(pp.site_obj.code) if pp.site_obj else (pp.site_text or None)
         email = pp.email or email
     return UserOut(

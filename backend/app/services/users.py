@@ -67,11 +67,11 @@ def normalize_parent_nin_for_storage(nin: str | None, *, matricule: str) -> str:
     return s[:191]
 
 
-def normalize_parent_telephone_for_storage(telephone: str | None, *, matricule: str) -> str:
-    """Évite la contrainte unique sur `parents.telephone` quand le numéro n'est pas fourni."""
+def normalize_parent_telephone_for_storage(telephone: str | None, *, matricule: str) -> str | None:
+    """Stocke NULL si le numéro n'est pas fourni (pas de valeur factice)."""
     s = (telephone or "").strip()
     if not s or s == "-":
-        return f"tel:{matricule}"[:191]
+        return None
     return s[:191]
 
 
