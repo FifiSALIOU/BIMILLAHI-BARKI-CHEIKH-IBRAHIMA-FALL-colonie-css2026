@@ -48,6 +48,9 @@ export default function InscrireEnfant() {
 
   if (!parent) return null;
 
+  const selectedSite = sites.find((s) => String(s.code) === String(site));
+  const agenceAffichee = selectedSite?.nom || parent.site || parent.site_code || '';
+
   const MAX_ENFANTS = settings.maxEnfantsParParent;
   const enfants = getEnfantsByParent(parent.matricule);
   const nbInscrits = enfants.length;
@@ -239,14 +242,7 @@ export default function InscrireEnfant() {
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label className="text-foreground">Agence *</Label>
-                <Select value={site} onValueChange={setSite}>
-                  <SelectTrigger className="h-11 rounded-lg"><SelectValue placeholder="Sélectionner une agence" /></SelectTrigger>
-                  <SelectContent>
-                    {sites.map(s => (
-                      <SelectItem key={s.id} value={String(s.code)}>{s.nom}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input value={agenceAffichee} disabled className="h-11 rounded-lg bg-muted/50" />
               </div>
             </div>
           </div>
