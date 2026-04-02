@@ -93,11 +93,13 @@ export function AdminSidebar({ currentPage, onNavigate, isSuperAdmin }: Props) {
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              <SidebarMenuItem>
-                <SidebarMenuButton onClick={() => onNavigate('gestion_sites')} isActive={currentPage === 'gestion_sites'} tooltip="Sites">
-                  <MapPin className="w-4 h-4" />{!collapsed && <span>Sites</span>}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {isSuperAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton onClick={() => onNavigate('gestion_sites')} isActive={currentPage === 'gestion_sites'} tooltip="Sites">
+                    <MapPin className="w-4 h-4" />{!collapsed && <span>Sites</span>}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
 
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={() => onNavigate('statistiques')} isActive={currentPage === 'statistiques'} tooltip="Statistiques">
