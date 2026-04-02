@@ -22,6 +22,7 @@ export default function GestionUtilisateurs() {
   type ParentRow = Parent & { userId: string };
   const [parents, setParents] = useState<ParentRow[]>([]);
   const [sites, setSites] = useState<Array<{ id: number; nom: string; code: string }>>([]);
+  const [services, setServices] = useState<Array<{ id: number; nom: string }>>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<AdminUser | null>(null);
@@ -111,9 +112,15 @@ export default function GestionUtilisateurs() {
     setSites(rows.map((s) => ({ id: s.id, nom: s.nom, code: String(s.code) })));
   };
 
+  const refreshServices = async () => {
+    if (!token) return;
+    const rows = await apiRequest<Array<{ id: number; nom: string }>>('/admin/services', { token });
+    setServices(rows.map((s) => ({ id: s.id, nom: s.nom })));
+  };
+
   useEffect(() => {
     if (!token) return;
-    Promise.all([refreshUsers(), refreshSites()]).catch(() => {
+    Promise.all([refreshUsers(), refreshSites(), refreshServices()]).catch(() => {
       toast({ title: 'Erreur de chargement des utilisateurs', variant: 'destructive' });
     });
   }, [token]);
@@ -580,7 +587,17 @@ export default function GestionUtilisateurs() {
               <div className="space-y-2"><Label>Prénom</Label><Input value={newParentPrenom} onChange={e => setNewParentPrenom(e.target.value)} className="rounded-lg" /></div>
               <div className="space-y-2"><Label>Nom</Label><Input value={newParentNom} onChange={e => setNewParentNom(e.target.value)} className="rounded-lg" /></div>
             </div>
-            <div className="space-y-2"><Label>Service</Label><Input value={newParentService} onChange={e => setNewParentService(e.target.value)} className="rounded-lg" /></div>
+            <div className="space-y-2">
+              <Label>Service</Label>
+              <Select value={newParentService} onValueChange={setNewParentService}>
+                <SelectTrigger className="rounded-lg"><SelectValue placeholder="Sélectionner un service" /></SelectTrigger>
+                <SelectContent>
+                  {services.map((s) => (
+                    <SelectItem key={s.id} value={s.nom}>{s.nom}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label>Site</Label>
               <Select value={newParentSite} onValueChange={setNewParentSite}>
@@ -618,7 +635,17 @@ export default function GestionUtilisateurs() {
                 <div className="space-y-2"><Label>Prénom</Label><Input value={editingParent.prenom} onChange={e => setEditingParent({ ...editingParent, prenom: e.target.value })} className="rounded-lg" /></div>
                 <div className="space-y-2"><Label>Nom</Label><Input value={editingParent.nom} onChange={e => setEditingParent({ ...editingParent, nom: e.target.value })} className="rounded-lg" /></div>
               </div>
-              <div className="space-y-2"><Label>Service</Label><Input value={editingParent.service} onChange={e => setEditingParent({ ...editingParent, service: e.target.value })} className="rounded-lg" /></div>
+              <div className="space-y-2">
+                <Label>Service</Label>
+                <Select value={editingParent.service || ''} onValueChange={v => setEditingParent({ ...editingParent, service: v })}>
+                  <SelectTrigger className="rounded-lg"><SelectValue placeholder="Sélectionner un service" /></SelectTrigger>
+                  <SelectContent>
+                    {services.map((s) => (
+                      <SelectItem key={s.id} value={s.nom}>{s.nom}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="space-y-2">
                 <Label>Site</Label>
                 <Select value={editingParent.site || ''} onValueChange={v => setEditingParent({ ...editingParent, site: v })}>
