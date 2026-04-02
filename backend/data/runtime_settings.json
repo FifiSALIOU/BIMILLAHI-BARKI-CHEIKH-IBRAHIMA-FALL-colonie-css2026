@@ -3,7 +3,7 @@
   "dateDebutInscriptions": "2026-01-01",
   "dateFinInscriptions": "2026-04-30",
   "dateDebutColonie": "2026-07-01",
-  "dateFinColonie": "2026-08-31",
+  "dateFinColonie": "",
   "capaciteMax": 100,
   "maxEnfantsParParent": 2,
   "ageMin": 2012,

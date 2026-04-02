@@ -28,6 +28,7 @@ from app.services.inscriptions import (
 )
 from app.services.email import send_email, uniq_emails
 from app.services.notify_helpers import collect_admin_emails
+from app.services.runtime_settings_store import read_settings
 from app.services.email_templates import (
     body_desistement_cancelled_admin,
     body_desistement_cancelled_parent,
@@ -145,6 +146,67 @@ _LISTE_ORDRE: dict[ListeCode, int] = {
     ListeCode.ATTENTE_N1: 1,
     ListeCode.ATTENTE_N2: 2,
 }
+
+
+@router.get("/liste-finale")
+def liste_finale_globale_parent(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.PARENT)),
+):
+    """Liste finale globale consultable par le parent (lecture seule)."""
+    _ = user
+    ensure_listes_exist(db)
+
+    raw_settings = read_settings()
+    capacite_max = raw_settings.get("capaciteMax", 100)
+    try:
+        capacite_max = None if capacite_max is None else max(int(capacite_max), 0)
+    except Exception:
+        capacite_max = 100
+
+    demandes = (
+        db.query(DemandeInscription)
+        .options(
+            joinedload(DemandeInscription.enfant).joinedload(Enfant.parent),
+            joinedload(DemandeInscription.liste),
+        )
+        .filter(DemandeInscription.statut != DemandeStatut.NON_VALIDEE)
+        .filter(DemandeInscription.statut != DemandeStatut.DESISTEE)
+        .all()
+    )
+
+    def _order(d: DemandeInscription) -> tuple[int, date, int]:
+        return (
+            _LISTE_ORDRE.get(d.liste.code, 99),
+            d.date_inscription,
+            d.id,
+        )
+
+    ordered = sorted(demandes, key=_order)
+    if capacite_max is not None:
+        ordered = ordered[:capacite_max]
+
+    out = []
+    for idx, d in enumerate(ordered, start=1):
+        e = d.enfant
+        p = e.parent
+        out.append(
+            {
+                "position": idx,
+                "demande_id": d.id,
+                "liste_code": d.liste.code.value,
+                "date_inscription": d.date_inscription,
+                "parent_matricule": p.matricule,
+                "parent_prenom": p.prenom,
+                "parent_nom": p.nom,
+                "parent_service": p.service_text,
+                "enfant_prenom": e.prenom,
+                "enfant_nom": e.nom,
+                "enfant_date_naissance": e.date_naissance,
+                "enfant_sexe": e.sexe.value,
+            }
+        )
+    return out
 
 
 @router.get("/inscriptions-transparence", response_model=list[TransparenceInscriptionOut])

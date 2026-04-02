@@ -1,45 +1,63 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useInscription } from '@/contexts/InscriptionContext';
 import { calculateAge } from '@/data/mockData';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Search, Award } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiRequest } from '@/lib/api';
+
+type ParentFinaleRow = {
+  position: number;
+  demande_id: number;
+  liste_code: string;
+  date_inscription: string;
+  parent_matricule: string;
+  parent_prenom: string;
+  parent_nom: string;
+  parent_service: string;
+  enfant_prenom: string;
+  enfant_nom: string;
+  enfant_date_naissance: string;
+  enfant_sexe: string;
+};
 
 export default function ListeFinaleParent() {
-  const { getListeFinale, parents, listeFinaleGeneree } = useInscription();
+  const { token } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
+  const [rows, setRows] = useState<ParentFinaleRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!listeFinaleGeneree) {
-    return (
-      <div className="max-w-7xl mx-auto space-y-6">
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-              <Award className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">Liste finale des retenus</h1>
-              <p className="text-muted-foreground mt-1">La liste finale n'est pas encore disponible.</p>
-            </div>
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    const load = async () => {
+      if (!token) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await apiRequest<ParentFinaleRow[]>('/parent/liste-finale', { token });
+        setRows(data);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Impossible de charger la liste finale.');
+        setRows([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [token]);
 
-  const listeFinale = getListeFinale();
+  const listeFinale = rows;
 
   const filtered = listeFinale.filter(e => {
     if (!searchTerm) return true;
-    const p = parents.find(x => x.matricule === e.parentMatricule);
     const s = searchTerm.toLowerCase();
     return (
-      e.parentMatricule.toLowerCase().includes(s) ||
-      e.nom.toLowerCase().includes(s) ||
-      e.prenom.toLowerCase().includes(s) ||
-      (p?.nom || '').toLowerCase().includes(s) ||
-      (p?.prenom || '').toLowerCase().includes(s)
+      e.parent_matricule.toLowerCase().includes(s) ||
+      e.enfant_nom.toLowerCase().includes(s) ||
+      e.enfant_prenom.toLowerCase().includes(s) ||
+      e.parent_nom.toLowerCase().includes(s) ||
+      e.parent_prenom.toLowerCase().includes(s)
     );
   });
 
@@ -52,7 +70,7 @@ export default function ListeFinaleParent() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-foreground">Liste finale des retenus</h1>
-            <p className="text-muted-foreground mt-1">{listeFinale.length} enfant(s) retenus pour la Colonie de Vacances</p>
+            <p className="text-muted-foreground mt-1">{listeFinale.length} enfant(s) retenus pour la Colonie de Vacances (liste globale)</p>
           </div>
         </div>
       </motion.div>
@@ -85,22 +103,25 @@ export default function ListeFinaleParent() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {loading ? (
+                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Chargement...</TableCell></TableRow>
+              ) : error ? (
+                <TableRow><TableCell colSpan={9} className="text-center py-8 text-destructive">{error}</TableCell></TableRow>
+              ) : filtered.length === 0 ? (
                 <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Aucun résultat</TableCell></TableRow>
               ) : (
                 filtered.map((e, idx) => {
-                  const p = parents.find(x => x.matricule === e.parentMatricule);
                   return (
-                    <TableRow key={e.id}>
+                    <TableRow key={e.demande_id}>
                       <TableCell className="font-bold text-foreground text-center">{idx + 1}</TableCell>
-                      <TableCell className="font-mono tabular-nums text-sm">{e.parentMatricule}</TableCell>
-                      <TableCell>{p?.nom || '—'}</TableCell>
-                      <TableCell>{p?.prenom || '—'}</TableCell>
-                      <TableCell className="text-sm">{p?.service || '—'}</TableCell>
-                      <TableCell>{e.prenom}</TableCell>
-                      <TableCell className="font-medium">{e.nom}</TableCell>
-                      <TableCell>{calculateAge(e.dateNaissance)} ans</TableCell>
-                      <TableCell>{e.sexe === 'M' ? 'M' : 'F'}</TableCell>
+                      <TableCell className="font-mono tabular-nums text-sm">{e.parent_matricule}</TableCell>
+                      <TableCell>{e.parent_nom || '—'}</TableCell>
+                      <TableCell>{e.parent_prenom || '—'}</TableCell>
+                      <TableCell className="text-sm">{e.parent_service || '—'}</TableCell>
+                      <TableCell>{e.enfant_prenom}</TableCell>
+                      <TableCell className="font-medium">{e.enfant_nom}</TableCell>
+                      <TableCell>{calculateAge(e.enfant_date_naissance)} ans</TableCell>
+                      <TableCell>{String(e.enfant_sexe).toUpperCase() === 'M' ? 'M' : 'F'}</TableCell>
                     </TableRow>
                   );
                 })
