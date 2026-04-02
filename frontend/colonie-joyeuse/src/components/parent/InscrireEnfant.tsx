@@ -22,7 +22,7 @@ export default function InscrireEnfant() {
   const [sexe, setSexe] = useState('');
   const [lienParente, setLienParente] = useState('');
   const [email, setEmail] = useState(parent?.email || '');
-  const [telephone, setTelephone] = useState(parent?.telephone || '');
+  const [telephone, setTelephone] = useState('');
   const [site, setSite] = useState(parent?.site_code || parent?.site || '');
   const [errorOpen, setErrorOpen] = useState(false);
   const [errorTitle, setErrorTitle] = useState('');
@@ -238,7 +238,7 @@ export default function InscrireEnfant() {
               </div>
               <div className="space-y-2">
                 <Label className="text-foreground">Téléphone *</Label>
-                <Input value={telephone} onChange={e => setTelephone(e.target.value)} placeholder="Téléphone" className="h-11 rounded-lg" />
+                <Input value={telephone} onChange={e => setTelephone(e.target.value)} placeholder="Saisissez votre numéro de téléphone" className="h-11 rounded-lg" />
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label className="text-foreground">Agence *</Label>
