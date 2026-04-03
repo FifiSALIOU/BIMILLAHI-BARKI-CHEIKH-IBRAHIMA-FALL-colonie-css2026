@@ -68,7 +68,7 @@ export default function InscrireEnfant({ onClose }: InscrireEnfantProps = {}) {
       setErrorOpen(true);
       return;
     }
-    if (!prenom.trim() || !nom.trim() || !dateNaissance || !sexe || !lienParente || !telephone.trim() || !email.trim()) {
+    if (!prenom.trim() || !nom.trim() || !dateNaissance || !sexe || !lienParente || !telephone.trim()) {
       setErrorTitle("Champs requis");
       setErrorMessage("Veuillez remplir tous les champs obligatoires du formulaire.");
       setErrorOpen(true);
@@ -113,7 +113,7 @@ export default function InscrireEnfant({ onClose }: InscrireEnfantProps = {}) {
             nom: parent.nom,
             matricule: parent.matricule,
             service: parent.service,
-            email: email.trim(),
+            email: email.trim() || null,
             telephone: telephone.trim(),
             site_code: parent.site_code || parent.site || null,
           },
@@ -227,7 +227,7 @@ export default function InscrireEnfant({ onClose }: InscrireEnfantProps = {}) {
                 <Input value={parent.nom} disabled className="bg-muted/50" />
               </div>
               <div className="space-y-2">
-                <Label className="text-foreground">Email *</Label>
+                <Label className="text-foreground">Email</Label>
                 <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" className="h-11 rounded-lg" />
               </div>
               <div className="space-y-2">
