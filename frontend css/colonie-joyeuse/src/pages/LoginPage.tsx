@@ -119,7 +119,7 @@ export default function LoginPage() {
               <Label htmlFor="identifier" className="text-foreground font-medium">N° Matricule ou E-mail</Label>
               <div className="relative">
                 <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input id="identifier" placeholder="Ex: CSS-2024-001 ou admin@css.sn" value={identifier} onChange={e => setIdentifier(e.target.value)} className="pl-10 h-11 rounded-lg" />
+                <Input id="identifier" placeholder="Saisissez votre numéro matricule ou Email" value={identifier} onChange={e => setIdentifier(e.target.value)} className="pl-10 h-11 rounded-lg" />
               </div>
             </div>
 
