@@ -54,16 +54,25 @@ export default function GestionUtilisateurs() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importExcelOpen, setImportExcelOpen] = useState(false);
 
+  const splitName = (fullName: string | null | undefined) => {
+    const s = (fullName || '').trim();
+    if (!s) return { prenom: '', nom: '' };
+    const parts = s.split(/\s+/);
+    if (parts.length === 1) return { prenom: parts[0], nom: '' };
+    return { prenom: parts.slice(0, -1).join(' '), nom: parts[parts.length - 1] };
+  };
+
   const refreshUsers = async () => {
     if (!token) return;
     const rows = await apiRequest<any[]>('/admin/users', { token });
     const mappedAdmins: AdminUser[] = rows
       .filter((u) => u.role !== 'PARENT')
       .map((u) => ({
+        ...splitName(u.name),
         id: String(u.id),
         email: u.email || '',
-        nom: u.last_name || '',
-        prenom: u.first_name || '',
+        nom: splitName(u.name).nom,
+        prenom: splitName(u.name).prenom,
         role: u.role === 'SUPER_ADMIN' ? 'super_admin' : 'gestionnaire',
         actif: !!u.is_active,
         dateCreation: (u.created_at || '').slice(0, 10),
@@ -75,13 +84,13 @@ export default function GestionUtilisateurs() {
       .map((u) => ({
         userId: String(u.id),
         matricule: u.matricule || '',
-        prenom: u.first_name || '',
-        nom: u.last_name || '',
+        prenom: u.parent_prenom || '',
+        nom: u.parent_nom || '',
         service: u.parent_service || '',
         site: u.parent_site_code || '',
         site_code: u.parent_site_code || '',
         motDePasse: '',
-        email: u.parent_email || '',
+        email: u.email || '',
         telephone: u.parent_telephone || '',
         premiereConnexion: false,
       }));
@@ -121,13 +130,14 @@ export default function GestionUtilisateurs() {
           token,
           body: JSON.stringify({
             matricule: row.matricule,
-            first_name: row.prenom,
-            last_name: row.nom,
+            name: `${row.prenom} ${row.nom}`.trim(),
+            prenom: row.prenom,
+            nom: row.nom,
             role: 'PARENT',
             service: row.service,
             site_code: row.site || null,
             email: row.email || null,
-            parent_telephone: row.telephone || null,
+            telephone: row.telephone || null,
           }),
         });
         success++;
@@ -159,10 +169,8 @@ export default function GestionUtilisateurs() {
           token,
           body: JSON.stringify({
             email: row.email,
-            first_name: row.prenom,
-            last_name: row.nom,
+            name: `${row.prenom} ${row.nom}`.trim(),
             role: role === 'super_admin' ? 'SUPER_ADMIN' : 'GESTIONNAIRE',
-            telephone: row.telephone || null,
           }),
         });
         success++;
@@ -182,10 +190,8 @@ export default function GestionUtilisateurs() {
       token,
       body: JSON.stringify({
         email: newEmail,
-        first_name: newPrenom,
-        last_name: newNom,
+        name: `${newPrenom} ${newNom}`.trim(),
         role: newRole === 'super_admin' ? 'SUPER_ADMIN' : 'GESTIONNAIRE',
-        telephone: newTelephone || null,
       }),
     });
     await refreshUsers();
@@ -221,8 +227,7 @@ export default function GestionUtilisateurs() {
       token,
       body: JSON.stringify({
         email: editingAdmin.email,
-        first_name: editingAdmin.prenom,
-        last_name: editingAdmin.nom,
+        name: `${editingAdmin.prenom} ${editingAdmin.nom}`.trim(),
         role: editingAdmin.role === 'super_admin' ? 'SUPER_ADMIN' : 'GESTIONNAIRE',
       }),
     });
@@ -238,13 +243,14 @@ export default function GestionUtilisateurs() {
       token,
       body: JSON.stringify({
         matricule: newParentMatricule,
-        first_name: newParentPrenom,
-        last_name: newParentNom,
+        name: `${newParentPrenom} ${newParentNom}`.trim(),
+        prenom: newParentPrenom,
+        nom: newParentNom,
         role: 'PARENT',
         service: newParentService,
         site_code: newParentSite || null,
         email: newParentEmail || null,
-        parent_telephone: newParentTelephone || null,
+        telephone: newParentTelephone || null,
       }),
     });
     await refreshUsers();
@@ -261,10 +267,12 @@ export default function GestionUtilisateurs() {
       method: 'PATCH',
       token,
       body: JSON.stringify({
-        first_name: editingParent.prenom,
-        last_name: editingParent.nom,
+        name: `${editingParent.prenom} ${editingParent.nom}`.trim(),
         service: editingParent.service,
-        site_code: editingParent.site || null,
+        parent_prenom: editingParent.prenom,
+        parent_nom: editingParent.nom,
+        parent_service: editingParent.service,
+        parent_site_code: editingParent.site || null,
         email: editingParent.email || null,
         parent_telephone: editingParent.telephone || null,
       }),
@@ -291,8 +299,9 @@ export default function GestionUtilisateurs() {
             token,
             body: JSON.stringify({
               matricule,
-              first_name: prenom,
-              last_name: nom,
+              name: `${prenom} ${nom}`.trim(),
+              prenom,
+              nom,
               role: 'PARENT',
               service,
             }),
