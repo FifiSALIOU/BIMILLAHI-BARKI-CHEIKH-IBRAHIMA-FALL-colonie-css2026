@@ -24,6 +24,8 @@ export interface Enfant {
   liste: 'principale' | 'attente_n1' | 'attente_n2';
   statut: 'Titulaire' | 'Suppléant N1' | 'Suppléant N2';
   dateInscription: string;
+  /** Dernière mise à jour de la demande côté serveur (réinscription, etc.) — ordre d’arrivée affiché. */
+  updatedAt?: string | null;
   desistement?: 'demandé' | 'validé' | null;
   dateDesistement?: string;
   validation?: 'en_attente' | 'validé' | 'refusé';

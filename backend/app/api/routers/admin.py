@@ -379,6 +379,7 @@ def list_demandes_par_liste(
             "liste": liste.code.value,
             "rang": d.rang_dans_liste,
             "date_inscription": d.date_inscription,
+            "updated_at": d.updated_at.isoformat() if d.updated_at else None,
             "statut": d.statut.value,
             "is_reinscrit": (d.statut == DemandeStatut.SOUMISE and d.updated_at is not None),
             "non_validation_reason": d.non_validation_reason or None,

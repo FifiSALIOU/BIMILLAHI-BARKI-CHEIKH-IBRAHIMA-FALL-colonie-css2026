@@ -6,6 +6,7 @@ export type DemandeOutApi = {
   liste_code: string;
   rang_dans_liste: number;
   date_inscription: string;
+  updated_at?: string | null;
   statut: string;
   non_validation_reason?: string | null;
   is_selection_finale: boolean;
@@ -23,9 +24,12 @@ export type DemandeOutApi = {
 
 export type TransparenceRowApi = {
   demande_id: number;
+  enfant_id: number;
   liste_code: string;
   rang_dans_liste: number;
   date_inscription: string;
+  updated_at?: string | null;
+  is_reinscrit: boolean;
   statut_demande: string;
   parent_matricule: string;
   parent_prenom: string;
@@ -117,11 +121,19 @@ export function mapDemandeOutToEnfant(d: DemandeOutApi, parentMatricule: string)
     dateDes = raw.includes('T') ? raw.split('T')[0] : raw.slice(0, 10);
   }
 
+  const updatedAt =
+    d.updated_at == null || d.updated_at === ''
+      ? null
+      : typeof d.updated_at === 'string'
+        ? d.updated_at
+        : null;
+
   return {
     id: String(d.id),
     demandeId: d.id,
     enfantDbId: d.enfant_id,
     rangListe: d.rang_dans_liste,
+    updatedAt,
     isSelectionFinale: !!d.is_selection_finale,
     parentMatricule,
     prenom: d.enfant_prenom,
@@ -146,12 +158,13 @@ export function mapTransparenceRowToEnfant(row: TransparenceRowApi): Enfant {
     liste_code: row.liste_code,
     rang_dans_liste: row.rang_dans_liste,
     date_inscription: row.date_inscription,
+    updated_at: row.updated_at ?? null,
     statut: row.statut_demande,
     non_validation_reason: null,
     is_selection_finale: false,
     has_desistement_pending: false,
-    is_reinscrit: false,
-    enfant_id: row.demande_id,
+    is_reinscrit: row.is_reinscrit,
+    enfant_id: row.enfant_id,
     enfant_prenom: row.enfant_prenom,
     enfant_nom: row.enfant_nom,
     enfant_date_naissance: row.enfant_date_naissance,
@@ -160,7 +173,7 @@ export function mapTransparenceRowToEnfant(row: TransparenceRowApi): Enfant {
     enfant_is_titulaire: row.enfant_is_titulaire,
   };
   const e = mapDemandeOutToEnfant(d, row.parent_matricule);
-  return { ...e, enfantDbId: undefined };
+  return { ...e, enfantDbId: row.enfant_id };
 }
 
 export function mapListeFinaleRowToEnfant(row: ListeFinaleRowApi): Enfant {
@@ -169,6 +182,7 @@ export function mapListeFinaleRowToEnfant(row: ListeFinaleRowApi): Enfant {
   const dateInscription = when.includes('T') ? when : `${when}T12:00:00.000Z`;
   return {
     id: String(row.demande_id),
+    demandeId: row.demande_id,
     parentMatricule: row.parent_matricule,
     prenom: row.enfant_prenom,
     nom: row.enfant_nom,

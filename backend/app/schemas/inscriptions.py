@@ -35,9 +35,12 @@ class TransparenceInscriptionOut(BaseModel):
     """Vue lecture seule pour les parents : toutes les demandes (transparence des listes)."""
 
     demande_id: int
+    enfant_id: int
     liste_code: str
     rang_dans_liste: int
     date_inscription: datetime
+    updated_at: Optional[datetime] = None
+    is_reinscrit: bool = False
     statut_demande: str
     parent_matricule: str
     parent_prenom: str
@@ -59,6 +62,7 @@ class DemandeOut(BaseModel):
     liste_code: str
     rang_dans_liste: int
     date_inscription: datetime
+    updated_at: Optional[datetime] = None
     statut: str
     non_validation_reason: Optional[str] = None
     is_selection_finale: bool

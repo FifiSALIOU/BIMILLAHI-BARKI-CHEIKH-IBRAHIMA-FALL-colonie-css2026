@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Enfant, AppSettings, DEFAULT_SETTINGS, Parent, HistoriqueEntry } from '@/data/mockData';
+import { idDemandePourRang, rangAfficheParDemandeIdPourEnfants, trierEnfantsParOrdreArrivee } from '@/lib/ordreArriveeListe';
 
 interface InscriptionContextType {
   enfants: Enfant[];
@@ -72,9 +73,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
   };
 
   const getEnfantsByListe = (liste: Enfant['liste']) => {
-    return enfants
-      .filter(e => e.liste === liste)
-      .sort((a, b) => new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime());
+    return trierEnfantsParOrdreArrivee(enfants.filter(e => e.liste === liste));
   };
 
   const setTitulaire = (matricule: string, enfantId: string) => {
@@ -124,6 +123,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
           validation: 'en_attente' as const,
           reinscrit: true,
           dateInscription: newDateInscription,
+          updatedAt: newDateInscription,
         };
       });
     });
@@ -189,14 +189,11 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
   const getRangDansListe = (enfantId: string) => {
     const enfant = enfants.find(e => e.id === enfantId);
     if (!enfant) return 0;
-    const listeEnfants = enfants
-      .filter(e => e.liste === enfant.liste)
-      .sort((a, b) => new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime());
-    return listeEnfants.findIndex(e => e.id === enfantId) + 1;
+    const listeEnfants = enfants.filter(e => e.liste === enfant.liste);
+    const m = rangAfficheParDemandeIdPourEnfants(listeEnfants);
+    const did = idDemandePourRang(enfant);
+    return did >= 0 ? m.get(did) ?? 0 : 0;
   };
-
-  const sortByDateInscription = (a: Enfant, b: Enfant) =>
-    new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime();
 
   const isInscriptionsCloturees = () => {
     if (!settings.dateFinInscriptions) return false;
@@ -207,9 +204,9 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
 
   const getOrderedEligibleEnfants = () => {
     const byListe = (liste: Enfant['liste']) =>
-      enfants
-        .filter(e => e.liste === liste && (e.validation || 'en_attente') !== 'refusé')
-        .sort(sortByDateInscription);
+      trierEnfantsParOrdreArrivee(
+        enfants.filter(e => e.liste === liste && (e.validation || 'en_attente') !== 'refusé'),
+      );
 
     return [
       ...byListe('principale'),

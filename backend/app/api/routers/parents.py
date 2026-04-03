@@ -260,9 +260,12 @@ def list_inscriptions_transparence(
         rows.append(
             TransparenceInscriptionOut(
                 demande_id=d.id,
+                enfant_id=e.id,
                 liste_code=liste.code.value,
                 rang_dans_liste=d.rang_dans_liste,
                 date_inscription=when,
+                updated_at=_dt_aware_utc(d.updated_at),
+                is_reinscrit=(d.statut == DemandeStatut.SOUMISE and d.updated_at is not None),
                 statut_demande=d.statut.value,
                 parent_matricule=p.matricule,
                 parent_prenom=p.prenom,
@@ -468,6 +471,7 @@ def _to_demande_out(db: Session, demande: DemandeInscription) -> DemandeOut:
         liste_code=liste.code.value,
         rang_dans_liste=demande.rang_dans_liste,
         date_inscription=when,
+        updated_at=_dt_aware_utc(demande.updated_at),
         statut=demande.statut.value,
         non_validation_reason=demande.non_validation_reason or None,
         is_selection_finale=(demande.statut == DemandeStatut.RETENUE),

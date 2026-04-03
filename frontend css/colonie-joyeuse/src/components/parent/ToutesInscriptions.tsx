@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useInscription } from '@/contexts/InscriptionContext';
 import { calculateAge } from '@/data/mockData';
+import { compareEnfantsOrdreArrivee, idDemandePourRang, rangAfficheParDemandeIdPourEnfants } from '@/lib/ordreArriveeListe';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Search, Eye } from 'lucide-react';
@@ -10,9 +11,13 @@ export default function ToutesInscriptions() {
   const { enfants, parents } = useInscription();
   const [searchTerm, setSearchTerm] = useState('');
 
-  const sortedEnfants = [...enfants].sort((a, b) =>
-    new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime()
-  );
+  const LISTE_ORDRE: Record<string, number> = { principale: 0, attente_n1: 1, attente_n2: 2 };
+  const sortedEnfants = [...enfants].sort((a, b) => {
+    const oa = LISTE_ORDRE[a.liste] ?? 9;
+    const ob = LISTE_ORDRE[b.liste] ?? 9;
+    if (oa !== ob) return oa - ob;
+    return compareEnfantsOrdreArrivee(a, b);
+  });
 
   const getListeLabel = (liste: string) => {
     switch (liste) {
@@ -45,9 +50,11 @@ export default function ToutesInscriptions() {
     );
   });
 
-  const getRang = (enfant: typeof enfants[0]) => {
-    const listeEnfants = sortedEnfants.filter(e => e.liste === enfant.liste);
-    return listeEnfants.findIndex(e => e.id === enfant.id) + 1;
+  const getRang = (enfant: (typeof enfants)[0]) => {
+    const listeEnfants = enfants.filter((e) => e.liste === enfant.liste);
+    const m = rangAfficheParDemandeIdPourEnfants(listeEnfants);
+    const did = idDemandePourRang(enfant);
+    return did >= 0 ? m.get(did) ?? 0 : 0;
   };
 
   return (
