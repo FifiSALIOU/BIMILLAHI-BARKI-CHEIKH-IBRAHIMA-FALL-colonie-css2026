@@ -120,8 +120,15 @@ def me(
             .first()
         )
         site_code = None
-        if parent and parent.site_obj is not None:
-            site_code = parent.site_obj.code
+        site_nom = None
+        if parent:
+            if parent.site_obj is not None:
+                site_code = parent.site_obj.code
+                site_nom = parent.site_obj.nom
+            else:
+                st = (parent.site_text or "").strip()
+                if st:
+                    site_nom = st
         payload["parent"] = {
             "prenom": parent.prenom if parent else None,
             "nom": parent.nom if parent else None,
@@ -130,5 +137,6 @@ def me(
             "email": parent.email if parent else None,
             "telephone": parent.telephone if parent else None,
             "site_code": str(site_code) if site_code is not None else None,
+            "site_nom": site_nom,
         }
     return payload

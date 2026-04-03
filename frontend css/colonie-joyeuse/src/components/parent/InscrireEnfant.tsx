@@ -26,7 +26,6 @@ export default function InscrireEnfant({ onClose }: InscrireEnfantProps = {}) {
   const [lienParente, setLienParente] = useState('');
   const [email, setEmail] = useState(parent?.email || '');
   const [telephone, setTelephone] = useState('');
-  const [site, setSite] = useState(parent?.site || '');
   const [errorOpen, setErrorOpen] = useState(false);
   const [errorTitle, setErrorTitle] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -116,7 +115,7 @@ export default function InscrireEnfant({ onClose }: InscrireEnfantProps = {}) {
             service: parent.service,
             email: email.trim(),
             telephone: telephone.trim(),
-            site_code: parent.site_code || parent.site || site || null,
+            site_code: parent.site_code || parent.site || null,
           },
           enfant: {
             prenom: prenom.trim(),
@@ -237,7 +236,7 @@ export default function InscrireEnfant({ onClose }: InscrireEnfantProps = {}) {
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label className="text-foreground">Agence</Label>
-                <Input value={parent.site || site || ''} disabled className="bg-muted/50" />
+                <Input value={parent.site_nom || parent.site_code || parent.site || ''} disabled className="bg-muted/50" />
               </div>
             </div>
           </div>

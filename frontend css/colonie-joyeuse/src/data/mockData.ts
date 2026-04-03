@@ -5,6 +5,7 @@ export interface Parent {
   service: string;
   site?: string;
   site_code?: string;
+  site_nom?: string;
   motDePasse: string;
   email?: string;
   telephone?: string;
