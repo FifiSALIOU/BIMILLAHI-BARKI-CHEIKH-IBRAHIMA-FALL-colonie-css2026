@@ -13,6 +13,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { exportStyledExcel } from '@/lib/excelExport';
 import { apiRequest } from '@/lib/api';
+import { listeApiToUi, listeUiToApi, statutLabelFromListeUi } from '@/lib/listeCodes';
 
 type Enfant = {
   id: string;
@@ -66,14 +67,16 @@ export default function ListeFinale() {
     if (!token) return;
     Promise.all([
       apiRequest<any>('/admin/settings', { token }),
-      apiRequest<any[]>('/admin/listes/principale/demandes', { token }),
-      apiRequest<any[]>('/admin/listes/attente_n1/demandes', { token }),
-      apiRequest<any[]>('/admin/listes/attente_n2/demandes', { token }),
+      apiRequest<any[]>(`/admin/listes/${listeUiToApi('principale')}/demandes`, { token }),
+      apiRequest<any[]>(`/admin/listes/${listeUiToApi('attente_n1')}/demandes`, { token }),
+      apiRequest<any[]>(`/admin/listes/${listeUiToApi('attente_n2')}/demandes`, { token }),
       apiRequest<any[]>('/admin/desistements/en-attente', { token }),
     ]).then(([cfg, p, n1, n2, desistements]) => {
       setSettings(cfg);
       const mapRows = (list: any[]): Enfant[] =>
-        list.map((d: any) => ({
+        list.map((d: any) => {
+          const lu = listeApiToUi(d.liste);
+          return {
           id: String(d.enfant?.id ?? d.demande_id),
           demandeId: d.demande_id,
           parentMatricule: d.parent_matricule,
@@ -82,14 +85,15 @@ export default function ListeFinale() {
           dateNaissance: d.enfant?.date_naissance || '',
           sexe: d.enfant?.sexe === 'F' ? 'F' : 'M',
           lienParente: d.enfant?.lien_parente || '',
-          liste: d.liste,
-          statut: d.liste === 'principale' ? 'Titulaire' : d.liste === 'attente_n1' ? 'Suppléant N1' : 'Suppléant N2',
+          liste: lu,
+          statut: statutLabelFromListeUi(lu),
           dateInscription: d.date_inscription,
           parentNom: d.parent_nom,
           parentPrenom: d.parent_prenom,
           parentService: d.parent_service,
           parentSite: d.parent_site_code || '',
-        }));
+        };
+        });
       const all = [...mapRows(p), ...mapRows(n1), ...mapRows(n2)];
       const priority = { principale: 0, attente_n1: 1, attente_n2: 2 } as const;
       const ordered = all.sort((a, b) => {

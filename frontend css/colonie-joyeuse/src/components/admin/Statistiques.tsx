@@ -4,6 +4,7 @@ import { useInscription } from '@/contexts/InscriptionContext';
 import { Users, UserCheck, BarChart3, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiRequest } from '@/lib/api';
+import { listeUiToApi } from '@/lib/listeCodes';
 
 export default function Statistiques() {
   const { enfants } = useInscription();
@@ -18,9 +19,9 @@ export default function Statistiques() {
     Promise.all([
       apiRequest('/admin/stats', { token }),
       apiRequest<any[]>('/admin/users', { token }),
-      apiRequest<any[]>('/admin/listes/principale/demandes', { token }),
-      apiRequest<any[]>('/admin/listes/attente_n1/demandes', { token }),
-      apiRequest<any[]>('/admin/listes/attente_n2/demandes', { token }),
+      apiRequest<any[]>(`/admin/listes/${listeUiToApi('principale')}/demandes`, { token }),
+      apiRequest<any[]>(`/admin/listes/${listeUiToApi('attente_n1')}/demandes`, { token }),
+      apiRequest<any[]>(`/admin/listes/${listeUiToApi('attente_n2')}/demandes`, { token }),
     ])
       .then(([stats, users, principaleRows, n1Rows, n2Rows]) => {
         setStatsApi(stats);

@@ -10,11 +10,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { AlertTriangle, CheckCircle2, UserPlus, Star, Clock, PartyPopper } from 'lucide-react';
 import { apiRequest } from '@/lib/api';
 
+/** Valeurs attendues par l'API (`LienParente`) — libellés FR pour l'affichage */
+type LienParenteApi = 'PERE' | 'MERE' | 'TUTEUR_LEGAL' | 'AUTRE';
+const LIEN_PARENTE_LABELS: Record<LienParenteApi, string> = {
+  PERE: 'Père',
+  MERE: 'Mère',
+  TUTEUR_LEGAL: 'Tuteur légal',
+  AUTRE: 'Autre',
+};
+
 interface InscrireEnfantProps {
   onClose?: () => void;
+  /** Nombre d’enfants déjà inscrits (API) — sinon repli sur le contexte local */
+  nbEnfantsInscrits?: number;
+  onInscriptionSuccess?: () => void;
 }
 
-export default function InscrireEnfant({ onClose }: InscrireEnfantProps = {}) {
+export default function InscrireEnfant({ onClose, nbEnfantsInscrits, onInscriptionSuccess }: InscrireEnfantProps = {}) {
   const { parent, token, refreshParentProfile } = useAuth();
   const { getEnfantsByParent, settings, addHistorique } = useInscription();
 
@@ -23,7 +35,7 @@ export default function InscrireEnfant({ onClose }: InscrireEnfantProps = {}) {
   const [dateNaissance, setDateNaissance] = useState('');
   const [dateNaissanceError, setDateNaissanceError] = useState('');
   const [sexe, setSexe] = useState('');
-  const [lienParente, setLienParente] = useState('');
+  const [lienParente, setLienParente] = useState<LienParenteApi | ''>('');
   const [email, setEmail] = useState(parent?.email || '');
   const [telephone, setTelephone] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
@@ -39,7 +51,7 @@ export default function InscrireEnfant({ onClose }: InscrireEnfantProps = {}) {
 
   const MAX_ENFANTS = settings.maxEnfantsParParent;
   const enfants = getEnfantsByParent(parent.matricule);
-  const nbInscrits = enfants.length;
+  const nbInscrits = nbEnfantsInscrits !== undefined ? nbEnfantsInscrits : enfants.length;
 
   const handleDateNaissanceChange = (value: string) => {
     setDateNaissance(value);
@@ -93,7 +105,7 @@ export default function InscrireEnfant({ onClose }: InscrireEnfantProps = {}) {
     if (nbInscrits === 0) {
       liste = 'principale'; statut = 'Titulaire';
     } else if (nbInscrits === 1) {
-      if (lienParente === 'Autre') {
+      if (lienParente === 'AUTRE') {
         liste = 'attente_n2'; statut = 'Suppléant N2';
       } else {
         liste = 'attente_n1'; statut = 'Suppléant N1';
@@ -127,6 +139,7 @@ export default function InscrireEnfant({ onClose }: InscrireEnfantProps = {}) {
         }),
       });
       await refreshParentProfile();
+      onInscriptionSuccess?.();
       addHistorique({
         utilisateur: `${parent.prenom} ${parent.nom}`,
         role: 'Parent',
@@ -158,7 +171,7 @@ export default function InscrireEnfant({ onClose }: InscrireEnfantProps = {}) {
     if (nbInscrits === 0) {
       return { title: '1er Enfant — Titulaire', badge: 'Titulaire', icon: Star, color: 'text-emerald-600 bg-emerald-50' };
     } else if (nbInscrits === 1) {
-      if (lienParente === 'Autre') {
+      if (lienParente === 'AUTRE') {
         return { title: '2ème Enfant — Suppléant', badge: "Liste d'attente N2", icon: Clock, color: 'text-orange-600 bg-orange-50' };
       }
       return { title: '2ème Enfant — Suppléant', badge: "Liste d'attente N1", icon: Clock, color: 'text-accent bg-accent/10' };
@@ -275,15 +288,15 @@ export default function InscrireEnfant({ onClose }: InscrireEnfantProps = {}) {
                 <Select value={lienParente} onValueChange={setLienParente}>
                   <SelectTrigger className="h-11 rounded-lg"><SelectValue placeholder="Sélectionner le lien" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Père">Père</SelectItem>
-                    <SelectItem value="Mère">Mère</SelectItem>
-                    <SelectItem value="Tuteur légal">Tuteur légal</SelectItem>
-                    <SelectItem value="Autre">Autre</SelectItem>
+                    <SelectItem value="PERE">Père</SelectItem>
+                    <SelectItem value="MERE">Mère</SelectItem>
+                    <SelectItem value="TUTEUR_LEGAL">Tuteur légal</SelectItem>
+                    <SelectItem value="AUTRE">Autre</SelectItem>
                   </SelectContent>
                 </Select>
             {nbInscrits >= 2 ? (
                   <p className="text-xs text-orange-600 mt-1">⚠ Cet enfant sera automatiquement placé en Liste d'Attente N°2.</p>
-                ) : lienParente === 'Autre' ? (
+                ) : lienParente === 'AUTRE' ? (
                   <p className="text-xs text-accent mt-1">⚠ Cet enfant sera placé en Liste d'Attente N°2.</p>
                 ) : null}
               </div>
@@ -347,7 +360,7 @@ export default function InscrireEnfant({ onClose }: InscrireEnfantProps = {}) {
               <strong>Enfant :</strong> {prenom} {nom}<br />
               <strong>Date de naissance :</strong> {dateNaissance ? new Date(dateNaissance).toLocaleDateString('fr-FR') : ''}<br />
               <strong>Sexe :</strong> {sexe === 'M' ? 'Masculin' : sexe === 'F' ? 'Féminin' : ''}<br />
-              <strong>Lien de parenté :</strong> {lienParente}
+              <strong>Lien de parenté :</strong> {LIEN_PARENTE_LABELS[lienParente as LienParenteApi] ?? lienParente}
               <br /><br />
               <span className="text-destructive font-medium">⚠ Attention : une fois l'inscription enregistrée, vous ne pourrez plus modifier ces informations.</span>
             </DialogDescription>

@@ -1,9 +1,20 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInscription } from '@/contexts/InscriptionContext';
-import { calculateAge } from '@/data/mockData';
-import { Users, UserCheck, Clock, Star, Award, AlertTriangle, Lock, UserPlus, ArrowUpDown, HandMetal, XCircle, RotateCcw, Hash, Search, User, CheckCircle2 } from 'lucide-react';
+import { calculateAge, type Enfant, type Parent } from '@/data/mockData';
+import { apiRequest } from '@/lib/api';
+import {
+  mapDemandeOutToEnfant,
+  mapTransparenceRowToEnfant,
+  mapListeFinaleRowToEnfant,
+  parentsFromTransparence,
+  parentsFromListeFinale,
+  type DemandeOutApi,
+  type TransparenceRowApi,
+  type ListeFinaleRowApi,
+} from '@/lib/parentDemandeMapping';
+import { Users, UserCheck, Clock, Star, Award, AlertTriangle, Lock, UserPlus, ArrowUpDown, HandMetal, XCircle, RotateCcw, Hash, Search, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -13,8 +24,44 @@ import InscrireEnfant from '@/components/parent/InscrireEnfant';
 import ListeFinaleParent from '@/components/parent/ListeFinaleParent';
 
 export default function ParentDashboard() {
-  const { parent } = useAuth();
-  const { getEnfantsByParent, getListeFinale, settings, setTitulaire, demanderDesistement, annulerDesistement, reinscrireEnfant, addHistorique, getRangDansListe, enfants: allEnfants, parents: allParents, listeFinaleGeneree } = useInscription();
+  const { parent, token } = useAuth();
+  const { settings, addHistorique, listeFinaleGeneree } = useInscription();
+
+  const [mesEnfants, setMesEnfants] = useState<Enfant[]>([]);
+  const [transparenceEnfants, setTransparenceEnfants] = useState<Enfant[]>([]);
+  const [transparenceParents, setTransparenceParents] = useState<Parent[]>([]);
+  const [listeFinaleApiEnfants, setListeFinaleApiEnfants] = useState<Enfant[]>([]);
+  const [listeFinaleApiParents, setListeFinaleApiParents] = useState<Parent[]>([]);
+
+  const loadAll = useCallback(async () => {
+    if (!token || !parent) return;
+    try {
+      const [demandes, trans] = await Promise.all([
+        apiRequest<DemandeOutApi[]>('/parent/demandes', { token }),
+        apiRequest<TransparenceRowApi[]>('/parent/inscriptions-transparence', { token }),
+      ]);
+      const rows = trans || [];
+      setMesEnfants((demandes || []).map((d) => mapDemandeOutToEnfant(d, parent.matricule)));
+      setTransparenceEnfants(rows.map(mapTransparenceRowToEnfant));
+      setTransparenceParents(parentsFromTransparence(rows));
+
+      let finaleRaw: ListeFinaleRowApi[] = [];
+      try {
+        finaleRaw = await apiRequest<ListeFinaleRowApi[]>('/parent/liste-finale', { token });
+      } catch {
+        finaleRaw = [];
+      }
+      const fin = finaleRaw || [];
+      setListeFinaleApiEnfants(fin.map(mapListeFinaleRowToEnfant));
+      setListeFinaleApiParents(parentsFromListeFinale(fin));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [token, parent]);
+
+  useEffect(() => {
+    void loadAll();
+  }, [loadAll]);
 
   // Inscription dialog
   const [inscrireOpen, setInscrireOpen] = useState(false);
@@ -44,21 +91,36 @@ export default function ParentDashboard() {
   const inscriptionsCloturees = dateFin ? now > dateFin : false;
 
   const MAX = settings.maxEnfantsParParent;
-  const enfants = getEnfantsByParent(parent.matricule);
+  const enfants = mesEnfants;
+  const allEnfants = transparenceEnfants;
+  const allParents = transparenceParents;
   const allDesistes = inscriptionsCloturees && enfants.length > 0 && enfants.every(e => e.desistement === 'validé');
   const titulaire = enfants.find(e => e.statut === 'Titulaire');
   const suppN1 = enfants.find(e => e.statut === 'Suppléant N1');
   const suppN2 = enfants.find(e => e.statut === 'Suppléant N2');
-  const listeFinale = getListeFinale();
-  const enfantsRetenus = enfants.filter(e => listeFinale.some(f => f.id === e.id));
+  const enfantsRetenus = enfants.filter(e => e.isSelectionFinale);
 
   const enfantN1 = enfants.find(e => e.statut === 'Suppléant N1' && !e.desistement);
 
   // Action handlers (same as MesEnfants - unchanged behavior)
   const handleSetTitulaire = (id: string, name: string) => { setSelectedId(id); setSelectedName(name); setConfirmOpen(true); };
-  const confirmChange = () => {
-    setTitulaire(parent.matricule, selectedId);
-    addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Changement titulaire', details: `A défini ${selectedName} comme titulaire`, cible: selectedName });
+  const confirmChange = async () => {
+    const e = enfants.find((x) => x.id === selectedId);
+    if (!e?.enfantDbId || !token) {
+      setConfirmOpen(false);
+      return;
+    }
+    try {
+      await apiRequest('/parent/titulaire', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ enfant_id_titulaire: e.enfantDbId }),
+      });
+      await loadAll();
+      addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Changement titulaire', details: `A défini ${selectedName} comme titulaire`, cible: selectedName });
+    } catch (err) {
+      console.error(err);
+    }
     setConfirmOpen(false);
   };
 
@@ -66,29 +128,60 @@ export default function ParentDashboard() {
   const desistementTarget = enfants.find(e => e.id === desistementId);
   const isTitulaireDesistement = desistementTarget?.statut === 'Titulaire';
 
-  const handleSwapAndDesist = () => {
-    if (!enfantN1) return;
-    setTitulaire(parent.matricule, enfantN1.id);
-    addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Changement titulaire', details: `A défini ${enfantN1.prenom} ${enfantN1.nom} comme titulaire avant désistement`, cible: `${enfantN1.prenom} ${enfantN1.nom}` });
+  const handleSwapAndDesist = async () => {
+    if (!enfantN1?.enfantDbId || !token) return;
+    try {
+      await apiRequest('/parent/titulaire', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ enfant_id_titulaire: enfantN1.enfantDbId }),
+      });
+      await loadAll();
+      addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Changement titulaire', details: `A défini ${enfantN1.prenom} ${enfantN1.nom} comme titulaire avant désistement`, cible: `${enfantN1.prenom} ${enfantN1.nom}` });
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const confirmDesistement = () => {
-    demanderDesistement(desistementId);
-    addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Désistement demandé', details: `A demandé le désistement de ${desistementName}`, cible: desistementName });
+  const confirmDesistement = async () => {
+    if (!token) return;
+    try {
+      await apiRequest(`/parent/desistement/${Number(desistementId)}`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ reason: null }),
+      });
+      await loadAll();
+      addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Désistement demandé', details: `A demandé le désistement de ${desistementName}`, cible: desistementName });
+    } catch (err) {
+      console.error(err);
+    }
     setDesistementOpen(false);
   };
 
-  const handleAnnulerDesistement = (id: string) => {
+  const handleAnnulerDesistement = async (id: string) => {
     const enfant = enfants.find(e => e.id === id);
     if (enfant?.desistement === 'validé') { setCancelDesistError(true); return; }
-    annulerDesistement(id);
-    addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Annulation désistement', details: `A annulé le désistement de ${enfant?.prenom} ${enfant?.nom}`, cible: `${enfant?.prenom} ${enfant?.nom}` });
+    if (!token) return;
+    try {
+      await apiRequest(`/parent/desistement/${Number(id)}/annuler`, { method: 'POST', token });
+      await loadAll();
+      addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Annulation désistement', details: `A annulé le désistement de ${enfant?.prenom} ${enfant?.nom}`, cible: `${enfant?.prenom} ${enfant?.nom}` });
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleReinscrire = (id: string, name: string) => { setReinscrireId(id); setReinscireName(name); setReinscrireOpen(true); };
-  const confirmReinscrire = () => {
-    reinscrireEnfant(reinscrireId);
-    addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Réinscription', details: `A réinscrit ${reinscireName} après désistement`, cible: reinscireName });
+  const confirmReinscrire = async () => {
+    if (!token) return;
+    try {
+      await apiRequest(`/parent/desistement/${Number(reinscrireId)}/reinscrire`, { method: 'POST', token });
+      await loadAll();
+      addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Réinscription', details: `A réinscrit ${reinscireName} après désistement`, cible: reinscireName });
+    } catch (err) {
+      console.error(err);
+    }
     setReinscrireOpen(false);
   };
 
@@ -119,7 +212,17 @@ export default function ParentDashboard() {
     }
   };
 
-  const isInFinale = (id: string) => listeFinale.some(e => e.id === id);
+  const isInFinale = (id: string) => enfants.find((e) => e.id === id)?.isSelectionFinale ?? false;
+
+  const getRangDansListeLocal = (id: string) => {
+    const e = enfants.find((x) => x.id === id);
+    if (!e) return 0;
+    if (e.rangListe != null && e.rangListe > 0) return e.rangListe;
+    const listeEnfants = enfants
+      .filter((x) => x.liste === e.liste)
+      .sort((a, b) => new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime());
+    return listeEnfants.findIndex((x) => x.id === id) + 1;
+  };
 
   // Validation badge
   const getValidationBadge = (enfant: typeof enfants[0]) => {
@@ -155,7 +258,8 @@ export default function ParentDashboard() {
     }
   };
 
-  const getRang = (enfant: typeof allEnfants[0]) => {
+  const getRang = (enfant: Enfant) => {
+    if (enfant.rangListe != null && enfant.rangListe > 0) return enfant.rangListe;
     const listeEnfants = allEnfants
       .filter(e => e.liste === enfant.liste)
       .sort((a, b) => new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime());
@@ -328,7 +432,7 @@ export default function ParentDashboard() {
                   <div className="flex items-center gap-1.5">
                     <Hash className="w-3 h-3 text-muted-foreground" />
                     <span className="text-xs font-medium text-muted-foreground">
-                      Rang <strong className="text-foreground">{getRangDansListe(slot.enfant.id)}</strong> — {getListeLabel(slot.enfant.liste)}
+                        Rang <strong className="text-foreground">{getRangDansListeLocal(slot.enfant.id)}</strong> — {getListeLabel(slot.enfant.liste)}
                     </span>
                   </div>
 
@@ -414,19 +518,21 @@ export default function ParentDashboard() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full" style={{ gridTemplateColumns: inscriptionsCloturees && listeFinaleGeneree ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)' }}>
+          <TabsList className="grid w-full" style={{ gridTemplateColumns: inscriptionsCloturees && (listeFinaleGeneree || listeFinaleApiEnfants.length > 0) ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)' }}>
             <TabsTrigger value="principale">Liste Principale</TabsTrigger>
             <TabsTrigger value="attente_n1">Liste N°1</TabsTrigger>
             <TabsTrigger value="attente_n2">Liste N°2</TabsTrigger>
-            {inscriptionsCloturees && listeFinaleGeneree && (
+            {inscriptionsCloturees && (listeFinaleGeneree || listeFinaleApiEnfants.length > 0) && (
               <TabsTrigger value="liste_finale">Liste Finale</TabsTrigger>
             )}
           </TabsList>
           <TabsContent value="principale">{renderListeTable('principale')}</TabsContent>
           <TabsContent value="attente_n1">{renderListeTable('attente_n1')}</TabsContent>
           <TabsContent value="attente_n2">{renderListeTable('attente_n2')}</TabsContent>
-          {inscriptionsCloturees && listeFinaleGeneree && (
-            <TabsContent value="liste_finale"><ListeFinaleParent /></TabsContent>
+          {inscriptionsCloturees && (listeFinaleGeneree || listeFinaleApiEnfants.length > 0) && (
+            <TabsContent value="liste_finale">
+              <ListeFinaleParent apiListeFinale={listeFinaleApiEnfants} apiParents={listeFinaleApiParents} />
+            </TabsContent>
           )}
         </Tabs>
       </div>
@@ -434,7 +540,11 @@ export default function ParentDashboard() {
       {/* Inscription Dialog */}
       <Dialog open={inscrireOpen} onOpenChange={setInscrireOpen}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl">
-          <InscrireEnfant onClose={() => setInscrireOpen(false)} />
+          <InscrireEnfant
+            onClose={() => setInscrireOpen(false)}
+            nbEnfantsInscrits={enfants.length}
+            onInscriptionSuccess={() => { void loadAll(); }}
+          />
         </DialogContent>
       </Dialog>
 

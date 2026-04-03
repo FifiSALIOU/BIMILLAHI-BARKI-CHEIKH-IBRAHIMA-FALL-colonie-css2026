@@ -29,6 +29,11 @@ export interface Enfant {
   validation?: 'en_attente' | 'validé' | 'refusé';
   motifRefus?: string;
   reinscrit?: boolean;
+  /** Champs optionnels pour données issues de l’API parent */
+  demandeId?: number;
+  enfantDbId?: number;
+  rangListe?: number;
+  isSelectionFinale?: boolean;
 }
 
 export interface Inscription {

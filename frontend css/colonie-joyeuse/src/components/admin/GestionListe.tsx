@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/api';
+import { listeApiToUi, listeUiToApi, statutLabelFromListeUi, type ListeUi } from '@/lib/listeCodes';
 
 type Enfant = {
   id: string;
@@ -38,6 +39,7 @@ type Enfant = {
   parentEmail?: string;
   parentTelephone?: string;
   rang: number;
+  reinscrit?: boolean;
 };
 
 const calculateAge = (dateNaissance: string): number => {
@@ -71,6 +73,7 @@ export default function GestionListe({ type }: Props) {
   const [refusOpen, setRefusOpen] = useState(false);
   const [refusTarget, setRefusTarget] = useState<Enfant | null>(null);
   const [motifRefus, setMotifRefus] = useState('');
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const titles: Record<string, string> = {
     principale: 'Liste Principale',
@@ -98,12 +101,14 @@ export default function GestionListe({ type }: Props) {
 
   useEffect(() => {
     if (!token) return;
-    const code = type === 'principale' ? 'principale' : type === 'attente_n1' ? 'attente_n1' : 'attente_n2';
+    const code = listeUiToApi(type as ListeUi);
     Promise.all([
       apiRequest<any[]>(`/admin/listes/${code}/demandes`, { token }),
       apiRequest<any[]>('/admin/desistements/en-attente', { token }),
     ]).then(([rows, desistements]) => {
-      const mapRows: Enfant[] = rows.map((d: any) => ({
+      const mapRows: Enfant[] = rows.map((d: any) => {
+        const lu = listeApiToUi(d.liste);
+        return {
         id: String(d.enfant?.id ?? d.demande_id),
         demandeId: d.demande_id,
         parentMatricule: d.parent_matricule,
@@ -112,8 +117,8 @@ export default function GestionListe({ type }: Props) {
         dateNaissance: d.enfant?.date_naissance || '',
         sexe: d.enfant?.sexe === 'F' ? 'F' : 'M',
         lienParente: d.enfant?.lien_parente || '',
-        liste: d.liste,
-        statut: d.liste === 'principale' ? 'Titulaire' : d.liste === 'attente_n1' ? 'Suppléant N1' : 'Suppléant N2',
+        liste: lu,
+        statut: statutLabelFromListeUi(lu),
         dateInscription: d.date_inscription,
         validation: d.statut === 'NON_VALIDEE' ? 'refusé' : d.statut === 'RETENUE' ? 'validé' : 'en_attente',
         motifRefus: d.non_validation_reason || undefined,
@@ -122,7 +127,9 @@ export default function GestionListe({ type }: Props) {
         parentPrenom: d.parent_prenom,
         parentService: d.parent_service,
         rang: d.rang || 0,
-      }));
+        reinscrit: !!d.is_reinscrit,
+      };
+      });
       const idx: Record<number, number> = {};
       desistements.forEach((x) => {
         idx[x.demande_id] = x.desistement_id;
@@ -130,7 +137,7 @@ export default function GestionListe({ type }: Props) {
       setDesistementsByDemande(idx);
       setEnfants(mapRows);
     }).catch(() => undefined);
-  }, [token, type]);
+  }, [token, type, refreshTick]);
 
   const filteredEnfants = enfants.filter(e => {
     const p = { nom: e.parentNom, prenom: e.parentPrenom };
@@ -152,15 +159,16 @@ export default function GestionListe({ type }: Props) {
 
   const handleTransfer = async () => {
     if (!transferTarget) return;
-    const targetListe = type === 'principale' ? 'attente_n1' : 'attente_n2';
+    const targetListeUi: ListeUi = type === 'principale' ? 'attente_n1' : 'attente_n2';
     await apiRequest(`/admin/demandes/${transferTarget.demandeId}/transferer`, {
       method: 'POST',
       token,
-      body: JSON.stringify({ to_liste_code: targetListe, reason: 'Transfert administratif' }),
+      body: JSON.stringify({ to_liste_code: listeUiToApi(targetListeUi), reason: 'Transfert administratif' }),
     });
     addHistorique({ utilisateur: 'Gestionnaire', role: 'Admin', action: 'Transfert', details: `A transféré ${transferTarget.prenom} ${transferTarget.nom} vers la Liste d'Attente N°2`, cible: `${transferTarget.prenom} ${transferTarget.nom}` });
     toast({ title: '✅ Demande transférée', description: `${transferTarget.prenom} ${transferTarget.nom} a été transféré(e) vers la Liste d'Attente N°2.` });
     setTransferOpen(false); setTransferTarget(null);
+    setRefreshTick((t) => t + 1);
   };
 
   const handleValiderDesistement = async () => {
@@ -175,6 +183,7 @@ export default function GestionListe({ type }: Props) {
     addHistorique({ utilisateur: 'Gestionnaire', role: 'Admin', action: 'Validation désistement', details: `A validé le désistement de ${desistTarget.prenom} ${desistTarget.nom}`, cible: `${desistTarget.prenom} ${desistTarget.nom}` });
     toast({ title: '✅ Désistement validé', description: `Le désistement de ${desistTarget.prenom} ${desistTarget.nom} a été validé.` });
     setConfirmDesistOpen(false); setDesistTarget(null);
+    setRefreshTick((t) => t + 1);
   };
 
   const handleValider = async (enfant: Enfant) => {
@@ -185,6 +194,7 @@ export default function GestionListe({ type }: Props) {
     });
     addHistorique({ utilisateur: 'Gestionnaire', role: 'Admin', action: 'Approbation', details: `A approuvé les informations de ${enfant.prenom} ${enfant.nom}`, cible: `${enfant.prenom} ${enfant.nom}` });
     toast({ title: '✅ Informations approuvées', description: `Les informations de ${enfant.prenom} ${enfant.nom} ont été validées.` });
+    setRefreshTick((t) => t + 1);
   };
 
   const handleRefuser = async () => {
@@ -194,15 +204,16 @@ export default function GestionListe({ type }: Props) {
       token,
       body: JSON.stringify({ is_selection_finale: false, non_validation_reason: motifRefus.trim() }),
     });
-    const targetListe = type === 'principale' ? 'attente_n1' : 'attente_n2';
+    const targetListeUi: ListeUi = type === 'principale' ? 'attente_n1' : 'attente_n2';
     await apiRequest(`/admin/demandes/${refusTarget.demandeId}/transferer`, {
       method: 'POST',
       token,
-      body: JSON.stringify({ to_liste_code: targetListe, reason: `Refus conformité: ${motifRefus.trim()}` }),
+      body: JSON.stringify({ to_liste_code: listeUiToApi(targetListeUi), reason: `Refus conformité: ${motifRefus.trim()}` }),
     });
     addHistorique({ utilisateur: 'Gestionnaire', role: 'Admin', action: 'Refus', details: `A refusé la demande de ${refusTarget.prenom} ${refusTarget.nom}. Motif : ${motifRefus.trim()}`, cible: `${refusTarget.prenom} ${refusTarget.nom}` });
     toast({ title: '❌ Demande refusée', description: `${refusTarget.prenom} ${refusTarget.nom} — Motif : ${motifRefus}` });
     setRefusOpen(false); setRefusTarget(null); setMotifRefus('');
+    setRefreshTick((t) => t + 1);
   };
 
   const generateCSV = () => {

@@ -9,6 +9,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { exportStyledExcel } from '@/lib/excelExport';
 import { apiRequest } from '@/lib/api';
+import { listeApiToUi, listeUiToApi, statutLabelFromListeUi } from '@/lib/listeCodes';
 
 type Row = {
   id: string;
@@ -42,25 +43,28 @@ export default function ListeInscriptions() {
   useEffect(() => {
     if (!token) return;
     Promise.all([
-      apiRequest<any[]>('/admin/listes/principale/demandes', { token }),
-      apiRequest<any[]>('/admin/listes/attente_n1/demandes', { token }),
-      apiRequest<any[]>('/admin/listes/attente_n2/demandes', { token }),
+      apiRequest<any[]>(`/admin/listes/${listeUiToApi('principale')}/demandes`, { token }),
+      apiRequest<any[]>(`/admin/listes/${listeUiToApi('attente_n1')}/demandes`, { token }),
+      apiRequest<any[]>(`/admin/listes/${listeUiToApi('attente_n2')}/demandes`, { token }),
     ]).then(([p, n1, n2]) => {
       const mapRows = (list: any[]): Row[] =>
-        list.map((d) => ({
-          id: String(d.demande_id),
-          parentMatricule: d.parent_matricule,
-          parentNom: d.parent_nom,
-          parentPrenom: d.parent_prenom,
-          parentService: d.parent_service || '',
-          enfantNom: d.enfant?.nom || '',
-          enfantPrenom: d.enfant?.prenom || '',
-          dateNaissance: d.enfant?.date_naissance || '',
-          sexe: d.enfant?.sexe === 'F' ? 'F' : 'M',
-          statut: d.liste === 'principale' ? 'Titulaire' : d.liste === 'attente_n1' ? 'Suppléant N1' : 'Suppléant N2',
-          liste: d.liste,
-          dateInscription: d.date_inscription,
-        }));
+        list.map((d) => {
+          const lu = listeApiToUi(d.liste);
+          return {
+            id: String(d.demande_id),
+            parentMatricule: d.parent_matricule,
+            parentNom: d.parent_nom,
+            parentPrenom: d.parent_prenom,
+            parentService: d.parent_service || '',
+            enfantNom: d.enfant?.nom || '',
+            enfantPrenom: d.enfant?.prenom || '',
+            dateNaissance: d.enfant?.date_naissance || '',
+            sexe: d.enfant?.sexe === 'F' ? 'F' : 'M',
+            statut: statutLabelFromListeUi(lu),
+            liste: lu,
+            dateInscription: d.date_inscription,
+          };
+        });
       setRows([...mapRows(p), ...mapRows(n1), ...mapRows(n2)]);
     }).catch(() => undefined);
   }, [token]);

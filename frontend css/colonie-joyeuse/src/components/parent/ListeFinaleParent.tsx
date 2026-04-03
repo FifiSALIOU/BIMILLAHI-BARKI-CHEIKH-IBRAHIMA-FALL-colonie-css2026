@@ -1,16 +1,25 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useInscription } from '@/contexts/InscriptionContext';
-import { calculateAge } from '@/data/mockData';
+import { calculateAge, type Enfant, type Parent } from '@/data/mockData';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Search, Award } from 'lucide-react';
 
-export default function ListeFinaleParent() {
-  const { getListeFinale, parents, listeFinaleGeneree } = useInscription();
+interface ListeFinaleParentProps {
+  apiListeFinale?: Enfant[];
+  apiParents?: Parent[];
+}
+
+export default function ListeFinaleParent({ apiListeFinale, apiParents }: ListeFinaleParentProps = {}) {
+  const { getListeFinale, parents: ctxParents, listeFinaleGeneree } = useInscription();
   const [searchTerm, setSearchTerm] = useState('');
 
-  if (!listeFinaleGeneree) {
+  const useApi = apiListeFinale !== undefined;
+  const parents = apiParents ?? ctxParents;
+  const listeFinale = useApi ? apiListeFinale! : getListeFinale();
+
+  if (!useApi && !listeFinaleGeneree) {
     return (
       <div className="max-w-7xl mx-auto space-y-6">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -27,8 +36,6 @@ export default function ListeFinaleParent() {
       </div>
     );
   }
-
-  const listeFinale = getListeFinale();
 
   const filtered = listeFinale.filter(e => {
     if (!searchTerm) return true;
