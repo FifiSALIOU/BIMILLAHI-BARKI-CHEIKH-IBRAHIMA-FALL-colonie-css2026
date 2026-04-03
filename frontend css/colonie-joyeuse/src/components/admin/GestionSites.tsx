@@ -57,20 +57,29 @@ export default function GestionSites() {
     const errors: { ligne: number; message: string }[] = [];
     if (!token) return { success: 0, errors: [{ ligne: 0, message: 'Session expirée' }] };
     const existingCodes = new Set(sites.map(s => s.code));
-    data.forEach((row, i) => {
-      if (!row.nom || !row.code) { errors.push({ ligne: i + 2, message: 'Champs obligatoires manquants (nom, code)' }); return; }
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      if (!row.nom || !row.code) {
+        errors.push({ ligne: i + 2, message: 'Champs obligatoires manquants (nom, code)' });
+        continue;
+      }
       const code = String(row.code).replace(/\s/g, '');
-      if (existingCodes.has(code)) { errors.push({ ligne: i + 2, message: `Code "${code}" déjà existant` }); return; }
-      existingCodes.add(code);
-      success++;
-      apiRequest('/admin/sites', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ nom: row.nom, code, description: row.description || '' }),
-      }).catch((e) => {
+      if (existingCodes.has(code)) {
+        errors.push({ ligne: i + 2, message: `Code "${code}" déjà existant` });
+        continue;
+      }
+      try {
+        await apiRequest('/admin/sites', {
+          method: 'POST',
+          token,
+          body: JSON.stringify({ nom: row.nom, code, description: row.description || '' }),
+        });
+        existingCodes.add(code);
+        success++;
+      } catch (e) {
         errors.push({ ligne: i + 2, message: e instanceof Error ? e.message : 'Erreur API' });
-      });
-    });
+      }
+    }
     await loadSites();
     return { success, errors };
   };
