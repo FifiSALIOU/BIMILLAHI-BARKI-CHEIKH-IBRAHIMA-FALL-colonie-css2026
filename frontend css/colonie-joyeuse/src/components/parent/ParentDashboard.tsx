@@ -436,7 +436,7 @@ export default function ParentDashboard() {
               {slot.enfant ? (
                 <div className="space-y-2">
                   <p className="font-semibold text-foreground">{slot.enfant.prenom} {slot.enfant.nom}</p>
-                  <p className="text-sm text-muted-foreground">{calculateAge(slot.enfant.dateNaissance)} ans — {slot.enfant.sexe === 'M' ? 'Garçon' : 'Fille'}</p>
+                  <p className="text-sm text-muted-foreground">{calculateAge(slot.enfant.dateNaissance)} ans — {slot.enfant.sexe === 'M' ? 'Garçon' : 'Fille'} — {slot.enfant.lienParente}</p>
                   
                   {/* Rang and list */}
                   <div className="flex items-center gap-1.5">
