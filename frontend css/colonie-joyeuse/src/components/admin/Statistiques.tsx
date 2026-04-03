@@ -38,9 +38,24 @@ export default function Statistiques() {
       .catch(() => undefined);
   }, [token]);
 
-  const principale = useMemo(() => statsApi?.selected_by_liste?.principale ?? enfants.filter(e => e.liste === 'principale').length, [statsApi, enfants]);
-  const n1 = useMemo(() => statsApi?.selected_by_liste?.attente_n1 ?? enfants.filter(e => e.liste === 'attente_n1').length, [statsApi, enfants]);
-  const n2 = useMemo(() => statsApi?.selected_by_liste?.attente_n2 ?? enfants.filter(e => e.liste === 'attente_n2').length, [statsApi, enfants]);
+  const principale = useMemo(() => {
+    if (!statsApi) return enfants.filter(e => e.liste === 'principale').length;
+    const ibl = statsApi.inscriptions_by_liste;
+    const sbl = statsApi.selected_by_liste;
+    return ibl?.principale ?? sbl?.PRINCIPALE ?? sbl?.principale ?? 0;
+  }, [statsApi, enfants]);
+  const n1 = useMemo(() => {
+    if (!statsApi) return enfants.filter(e => e.liste === 'attente_n1').length;
+    const ibl = statsApi.inscriptions_by_liste;
+    const sbl = statsApi.selected_by_liste;
+    return ibl?.attente_n1 ?? sbl?.ATTENTE_N1 ?? sbl?.attente_n1 ?? 0;
+  }, [statsApi, enfants]);
+  const n2 = useMemo(() => {
+    if (!statsApi) return enfants.filter(e => e.liste === 'attente_n2').length;
+    const ibl = statsApi.inscriptions_by_liste;
+    const sbl = statsApi.selected_by_liste;
+    return ibl?.attente_n2 ?? sbl?.ATTENTE_N2 ?? sbl?.attente_n2 ?? 0;
+  }, [statsApi, enfants]);
   const totalParents = statsApi?.total_parents ?? new Set(enfants.map(e => e.parentMatricule)).size;
   const totalEnfants = statsApi?.total_enfants ?? enfants.length;
 

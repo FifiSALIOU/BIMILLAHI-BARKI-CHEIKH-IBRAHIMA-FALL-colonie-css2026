@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user, require_roles
 from app.db.session import get_db
@@ -566,6 +566,59 @@ def stats_summary(
 
     desistements_waiting = db.query(func.count(Desistement.id)).scalar() or 0
 
+    # Inscriptions par liste (toutes les demandes liées à la liste) — clés alignées sur le frontend (listeUi).
+    inscriptions_rows = (
+        db.query(Liste.code, func.count(DemandeInscription.id))
+        .join(DemandeInscription, DemandeInscription.liste_id == Liste.id)
+        .group_by(Liste.code)
+        .all()
+    )
+    inscriptions_by_liste = {"principale": 0, "attente_n1": 0, "attente_n2": 0}
+    for code, cnt in inscriptions_rows:
+        if code == ListeCode.PRINCIPALE:
+            inscriptions_by_liste["principale"] = int(cnt)
+        elif code == ListeCode.ATTENTE_N1:
+            inscriptions_by_liste["attente_n1"] = int(cnt)
+        elif code == ListeCode.ATTENTE_N2:
+            inscriptions_by_liste["attente_n2"] = int(cnt)
+
+    recent_demandes = (
+        db.query(DemandeInscription)
+        .options(joinedload(DemandeInscription.enfant).joinedload(Enfant.parent), joinedload(DemandeInscription.liste))
+        .order_by(
+            DemandeInscription.updated_at.desc().nulls_last(),
+            DemandeInscription.date_inscription.desc(),
+            DemandeInscription.id.desc(),
+        )
+        .limit(5)
+        .all()
+    )
+    recent_activity: list[dict] = []
+    for d in recent_demandes:
+        e = d.enfant
+        p = e.parent
+        lc = d.liste.code
+        if lc == ListeCode.PRINCIPALE:
+            liste_ui = "principale"
+        elif lc == ListeCode.ATTENTE_N1:
+            liste_ui = "attente_n1"
+        else:
+            liste_ui = "attente_n2"
+        di = d.date_inscription
+        date_iso = di.isoformat() if hasattr(di, "isoformat") else str(di)
+        recent_activity.append(
+            {
+                "id": str(e.id),
+                "prenom": e.prenom,
+                "nom": e.nom,
+                "parent_prenom": p.prenom,
+                "parent_nom": p.nom,
+                "parent_matricule": p.matricule,
+                "liste": liste_ui,
+                "date_inscription": date_iso,
+            }
+        )
+
     return {
         "total_users": int(total_users),
         "total_parents": int(total_parents),
@@ -573,6 +626,8 @@ def stats_summary(
         "total_demandes": int(total_demandes),
         "selected_total": int(selected_total),
         "selected_by_liste": by_liste_map,
+        "inscriptions_by_liste": inscriptions_by_liste,
+        "recent_activity": recent_activity,
         "desistements_waiting": int(desistements_waiting),
     }
 

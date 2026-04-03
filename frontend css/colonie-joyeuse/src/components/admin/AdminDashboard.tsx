@@ -5,8 +5,18 @@ import { Users, UserCheck, Clock, TrendingUp, Award, HandMetal } from 'lucide-re
 import { useAuth } from '@/contexts/AuthContext';
 import { apiRequest } from '@/lib/api';
 
+type RecentActivityRow = {
+  id: string;
+  prenom: string;
+  nom: string;
+  parent_prenom?: string;
+  parent_nom?: string;
+  liste: string;
+  date_inscription: string;
+};
+
 export default function AdminDashboard() {
-  const { enfants, parents, settings } = useInscription();
+  const { enfants, settings } = useInscription();
   const { token } = useAuth();
   const [statsApi, setStatsApi] = useState<any>(null);
 
@@ -15,9 +25,17 @@ export default function AdminDashboard() {
     apiRequest('/admin/stats', { token }).then(setStatsApi).catch(() => undefined);
   }, [token]);
 
-  const principale = statsApi?.selected_by_liste?.principale ?? enfants.filter(e => e.liste === 'principale').length;
-  const n1 = statsApi?.selected_by_liste?.attente_n1 ?? enfants.filter(e => e.liste === 'attente_n1').length;
-  const n2 = statsApi?.selected_by_liste?.attente_n2 ?? enfants.filter(e => e.liste === 'attente_n2').length;
+  const ibl = statsApi?.inscriptions_by_liste;
+  const sbl = statsApi?.selected_by_liste;
+  const principale = statsApi
+    ? (ibl?.principale ?? sbl?.PRINCIPALE ?? sbl?.principale ?? 0)
+    : enfants.filter(e => e.liste === 'principale').length;
+  const n1 = statsApi
+    ? (ibl?.attente_n1 ?? sbl?.ATTENTE_N1 ?? sbl?.attente_n1 ?? 0)
+    : enfants.filter(e => e.liste === 'attente_n1').length;
+  const n2 = statsApi
+    ? (ibl?.attente_n2 ?? sbl?.ATTENTE_N2 ?? sbl?.attente_n2 ?? 0)
+    : enfants.filter(e => e.liste === 'attente_n2').length;
   const total = statsApi?.total_demandes ?? enfants.length;
   const totalParents = statsApi?.total_parents ?? new Set(enfants.map(e => e.parentMatricule)).size;
   const listeFinaleCount = statsApi?.selected_total ?? 0;
@@ -43,6 +61,19 @@ export default function AdminDashboard() {
   ];
   const donutTotal = principale + n1 + n2;
   let cumulativePercent = 0;
+
+  const recentFromApi = statsApi != null && Array.isArray(statsApi.recent_activity);
+  const recentRows: RecentActivityRow[] = recentFromApi
+    ? statsApi.recent_activity
+    : enfants.slice(-5).reverse().map(e => ({
+        id: e.id,
+        prenom: e.prenom,
+        nom: e.nom,
+        parent_prenom: undefined,
+        parent_nom: undefined,
+        liste: e.liste,
+        date_inscription: e.dateInscription,
+      }));
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
@@ -97,16 +128,26 @@ export default function AdminDashboard() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="bg-card rounded-xl shadow-card border border-border p-6">
           <h3 className="text-lg font-semibold text-foreground mb-4">Activité récente</h3>
           <div className="space-y-3">
-            {enfants.slice(-5).reverse().map(e => (
-              <div key={e.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                <div className={`w-2 h-2 rounded-full ${e.liste === 'principale' ? 'bg-emerald-500' : e.liste === 'attente_n1' ? 'bg-accent' : 'bg-primary'}`} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{e.prenom} {e.nom}</p>
-                  <p className="text-xs text-muted-foreground">Par {parents.find(p => p.matricule === e.parentMatricule)?.prenom || 'N/A'}</p>
-                </div>
-                <span className="text-xs text-muted-foreground tabular-nums">{new Date(e.dateInscription).toLocaleDateString('fr-FR')}</span>
-              </div>
-            ))}
+            {recentRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">Aucune inscription récente.</p>
+            ) : (
+              recentRows.map(row => {
+                const parentLabel =
+                  row.parent_prenom != null || row.parent_nom != null
+                    ? [row.parent_prenom, row.parent_nom].filter(Boolean).join(' ')
+                    : null;
+                return (
+                  <div key={row.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+                    <div className={`w-2 h-2 rounded-full ${row.liste === 'principale' ? 'bg-emerald-500' : row.liste === 'attente_n1' ? 'bg-accent' : 'bg-primary'}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{row.prenom} {row.nom}</p>
+                      <p className="text-xs text-muted-foreground">Par {parentLabel || 'N/A'}</p>
+                    </div>
+                    <span className="text-xs text-muted-foreground tabular-nums">{new Date(row.date_inscription).toLocaleDateString('fr-FR')}</span>
+                  </div>
+                );
+              })
+            )}
           </div>
         </motion.div>
       </div>
