@@ -160,6 +160,7 @@ export default function GestionListe({ type }: Props) {
     dateInscription: e.dateInscription,
     updatedAt: e.updatedAt ?? null,
     reinscrit: !!e.reinscrit,
+    desistementValide: e.desistement === 'validé',
   });
 
   const filteredEnfants = enfants.filter(e => {

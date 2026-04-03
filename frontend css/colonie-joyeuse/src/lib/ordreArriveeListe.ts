@@ -10,9 +10,15 @@ export type OrdreArriveeInput = {
   dateInscription: string;
   updatedAt?: string | null;
   reinscrit?: boolean;
+  /** Désistement validé (statut DESISTEE) : `updated_at` = validation gestionnaire — évite de retomber sur l’ancienne `date_inscription`. */
+  desistementValide?: boolean;
 };
 
 export function instantOrdreArrivee(row: OrdreArriveeInput): number {
+  if (row.desistementValide && row.updatedAt) {
+    const tu = new Date(row.updatedAt).getTime();
+    if (!Number.isNaN(tu)) return tu;
+  }
   if (row.reinscrit && row.updatedAt) {
     const tu = new Date(row.updatedAt).getTime();
     if (!Number.isNaN(tu)) return tu;
@@ -39,6 +45,7 @@ export function enfantToOrdreInput(e: Enfant): OrdreArriveeInput {
     dateInscription: e.dateInscription,
     updatedAt: e.updatedAt ?? null,
     reinscrit: !!e.reinscrit,
+    desistementValide: e.desistement === 'validé',
   };
 }
 

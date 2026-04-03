@@ -17,6 +17,7 @@ type Row = {
   demandeId: number;
   updatedAt?: string | null;
   reinscrit?: boolean;
+  desistementValide: boolean;
   parentMatricule: string;
   parentNom: string;
   parentPrenom: string;
@@ -45,6 +46,7 @@ const rowVersOrdre = (r: Row): OrdreArriveeInput => ({
   dateInscription: r.dateInscription,
   updatedAt: r.updatedAt ?? null,
   reinscrit: !!r.reinscrit,
+  desistementValide: r.desistementValide,
 });
 
 export default function ListeInscriptions() {
@@ -67,6 +69,7 @@ export default function ListeInscriptions() {
             demandeId: d.demande_id,
             updatedAt: d.updated_at ?? null,
             reinscrit: !!d.is_reinscrit,
+            desistementValide: String(d.statut || '') === 'DESISTEE',
             parentMatricule: d.parent_matricule,
             parentNom: d.parent_nom,
             parentPrenom: d.parent_prenom,
