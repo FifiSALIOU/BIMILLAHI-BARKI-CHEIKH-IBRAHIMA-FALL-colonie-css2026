@@ -5,6 +5,7 @@ export interface ApiRequestOptions {
   token?: string | null;
   headers?: Record<string, string>;
   body?: BodyInit | null;
+  signal?: AbortSignal;
 }
 
 export interface ApiErrorPayload {
@@ -34,6 +35,7 @@ export async function apiRequest<T = any>(path: string, options: ApiRequestOptio
     method: options.method || 'GET',
     headers,
     body: options.body ?? null,
+    signal: options.signal,
   });
 
   if (!res.ok) {

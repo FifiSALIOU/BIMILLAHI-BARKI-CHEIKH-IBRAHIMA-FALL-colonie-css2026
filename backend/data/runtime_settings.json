@@ -8,5 +8,6 @@
   "maxEnfantsParParent": 2,
   "ageMin": 2012,
   "ageMax": 2019,
-  "inscriptionsOuvertes": true
+  "inscriptionsOuvertes": true,
+  "accesParentsActif": true
 }

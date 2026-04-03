@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,32 +10,62 @@ import { toast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiRequest } from '@/lib/api';
+import type { AppSettings } from '@/data/mockData';
+
+function isAbortError(e: unknown): boolean {
+  if (e instanceof DOMException && e.name === 'AbortError') return true;
+  if (e instanceof Error && e.name === 'AbortError') return true;
+  return false;
+}
 
 export default function Parametres() {
   const { settings, updateSettings } = useInscription();
   const { token } = useAuth();
+  const dirtyRef = useRef(false);
   const [capaciteNonDefini, setCapaciteNonDefini] = useState(settings.capaciteMax === null);
   const [maxEnfantsNonDefini, setMaxEnfantsNonDefini] = useState(settings.maxEnfantsParParent === null);
 
+  const patchSettings = (p: Partial<AppSettings>) => {
+    dirtyRef.current = true;
+    updateSettings(p);
+  };
+
   useEffect(() => {
     if (!token) return;
-    apiRequest<any>('/admin/settings', { token })
+    const ac = new AbortController();
+    dirtyRef.current = false;
+    apiRequest<any>('/admin/settings', { token, signal: ac.signal })
       .then((cfg) => {
-        updateSettings(cfg);
-        setCapaciteNonDefini(cfg.capaciteMax === null);
-        setMaxEnfantsNonDefini(cfg.maxEnfantsParParent === null);
+        if (!dirtyRef.current) {
+          updateSettings(cfg);
+          setCapaciteNonDefini(cfg.capaciteMax === null);
+          setMaxEnfantsNonDefini(cfg.maxEnfantsParParent === null);
+        }
       })
-      .catch(() => undefined);
+      .catch((e: unknown) => {
+        if (isAbortError(e)) return;
+      });
+    return () => ac.abort();
   }, [token]);
 
   const handleSave = async () => {
     if (!token) return;
-    await apiRequest('/admin/settings', {
-      method: 'PUT',
-      token,
-      body: JSON.stringify(settings),
-    });
-    toast({ title: '✅ Paramètres enregistrés', description: 'Les paramètres ont été mis à jour avec succès.' });
+    try {
+      await apiRequest('/admin/settings', {
+        method: 'PUT',
+        token,
+        body: JSON.stringify(settings),
+      });
+      const cfg = await apiRequest<any>('/admin/settings', { token });
+      dirtyRef.current = false;
+      updateSettings(cfg);
+      setCapaciteNonDefini(cfg.capaciteMax === null);
+      setMaxEnfantsNonDefini(cfg.maxEnfantsParParent === null);
+      toast({ title: '✅ Paramètres enregistrés', description: 'Les paramètres ont été mis à jour avec succès.' });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Erreur lors de l\'enregistrement.';
+      toast({ title: 'Enregistrement impossible', description: msg, variant: 'destructive' });
+    }
   };
 
   return (
@@ -55,7 +85,7 @@ export default function Parametres() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2 sm:col-span-2">
               <Label className="text-foreground">Nom de la colonie</Label>
-              <Input value={settings.colonieNom} onChange={e => updateSettings({ colonieNom: e.target.value })} className="rounded-lg" />
+              <Input value={settings.colonieNom} onChange={e => patchSettings({ colonieNom: e.target.value })} className="rounded-lg" />
             </div>
             <div className="space-y-2">
               <Label className="text-foreground">Capacité maximale (liste finale)</Label>
@@ -63,7 +93,7 @@ export default function Parametres() {
                 <Input
                   type="number"
                   value={capaciteNonDefini ? '' : (settings.capaciteMax ?? '')}
-                  onChange={e => updateSettings({ capaciteMax: parseInt(e.target.value) || 100 })}
+                  onChange={e => patchSettings({ capaciteMax: parseInt(e.target.value) || 100 })}
                   disabled={capaciteNonDefini}
                   placeholder={capaciteNonDefini ? 'Non défini' : '100'}
                   className="rounded-lg"
@@ -74,7 +104,7 @@ export default function Parametres() {
                   checked={capaciteNonDefini}
                   onCheckedChange={(checked) => {
                     setCapaciteNonDefini(!!checked);
-                    updateSettings({ capaciteMax: checked ? null : 100 });
+                    patchSettings({ capaciteMax: checked ? null : 100 });
                   }}
                 />
                 <span className="text-xs text-muted-foreground">Non défini (pas de limite)</span>
@@ -86,7 +116,7 @@ export default function Parametres() {
                 <Input
                   type="number"
                   value={maxEnfantsNonDefini ? '' : (settings.maxEnfantsParParent ?? '')}
-                  onChange={e => updateSettings({ maxEnfantsParParent: parseInt(e.target.value) || 2 })}
+                  onChange={e => patchSettings({ maxEnfantsParParent: parseInt(e.target.value) || 2 })}
                   disabled={maxEnfantsNonDefini}
                   placeholder={maxEnfantsNonDefini ? 'Non défini' : '2'}
                   className="rounded-lg"
@@ -97,7 +127,7 @@ export default function Parametres() {
                   checked={maxEnfantsNonDefini}
                   onCheckedChange={(checked) => {
                     setMaxEnfantsNonDefini(!!checked);
-                    updateSettings({ maxEnfantsParParent: checked ? null : 2 });
+                    patchSettings({ maxEnfantsParParent: checked ? null : 2 });
                   }}
                 />
                 <span className="text-xs text-muted-foreground">Non défini (pas de limite)</span>
@@ -115,11 +145,11 @@ export default function Parametres() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="text-foreground">Date de début des inscriptions</Label>
-              <Input type="date" value={settings.dateDebutInscriptions} onChange={e => updateSettings({ dateDebutInscriptions: e.target.value })} className="rounded-lg" />
+              <Input type="date" value={settings.dateDebutInscriptions} onChange={e => patchSettings({ dateDebutInscriptions: e.target.value })} className="rounded-lg" />
             </div>
             <div className="space-y-2">
               <Label className="text-foreground">Date de fin des inscriptions</Label>
-              <Input type="date" value={settings.dateFinInscriptions} onChange={e => updateSettings({ dateFinInscriptions: e.target.value })} className="rounded-lg" />
+              <Input type="date" value={settings.dateFinInscriptions} onChange={e => patchSettings({ dateFinInscriptions: e.target.value })} className="rounded-lg" />
             </div>
           </div>
           <div className="mt-4 bg-accent/5 border border-accent/20 rounded-lg p-3">
@@ -136,19 +166,19 @@ export default function Parametres() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="text-foreground">Date de début de la colonie</Label>
-              <Input type="date" value={settings.dateDebutColonie} onChange={e => updateSettings({ dateDebutColonie: e.target.value })} className="rounded-lg" />
+              <Input type="date" value={settings.dateDebutColonie} onChange={e => patchSettings({ dateDebutColonie: e.target.value })} className="rounded-lg" />
             </div>
             <div className="space-y-2">
               <Label className="text-foreground">Date de fin de la colonie</Label>
-              <Input type="date" value={settings.dateFinColonie} onChange={e => updateSettings({ dateFinColonie: e.target.value })} className="rounded-lg" />
+              <Input type="date" value={settings.dateFinColonie} onChange={e => patchSettings({ dateFinColonie: e.target.value })} className="rounded-lg" />
             </div>
             <div className="space-y-2">
               <Label className="text-foreground">Année de naissance min</Label>
-              <Input type="number" value={settings.ageMin} onChange={e => updateSettings({ ageMin: parseInt(e.target.value) || 2012 })} className="rounded-lg" />
+              <Input type="number" value={settings.ageMin} onChange={e => patchSettings({ ageMin: parseInt(e.target.value) || 2012 })} className="rounded-lg" />
             </div>
             <div className="space-y-2">
               <Label className="text-foreground">Année de naissance max</Label>
-              <Input type="number" value={settings.ageMax} onChange={e => updateSettings({ ageMax: parseInt(e.target.value) || 2019 })} className="rounded-lg" />
+              <Input type="number" value={settings.ageMax} onChange={e => patchSettings({ ageMax: parseInt(e.target.value) || 2019 })} className="rounded-lg" />
             </div>
           </div>
         </motion.div>
@@ -165,14 +195,14 @@ export default function Parametres() {
                 <p className="font-medium text-foreground">Inscriptions ouvertes</p>
                 <p className="text-sm text-muted-foreground">Les parents peuvent actuellement inscrire leurs enfants</p>
               </div>
-              <Switch checked={settings.inscriptionsOuvertes} onCheckedChange={v => updateSettings({ inscriptionsOuvertes: v })} />
+              <Switch checked={settings.inscriptionsOuvertes} onCheckedChange={v => patchSettings({ inscriptionsOuvertes: v })} />
             </div>
             <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30">
               <div>
                 <p className="font-medium text-foreground">Accès plateforme parents</p>
                 <p className="text-sm text-muted-foreground">Autoriser les parents à se connecter à leur espace. Si désactivé, aucun parent ne pourra accéder à la plateforme.</p>
               </div>
-              <Switch checked={settings.accesParentsActif} onCheckedChange={v => updateSettings({ accesParentsActif: v })} />
+              <Switch checked={settings.accesParentsActif} onCheckedChange={v => patchSettings({ accesParentsActif: v })} />
             </div>
           </div>
         </motion.div>

@@ -25,7 +25,7 @@ from app.services.email_templates import (
 )
 from app.services.inscriptions import ensure_listes_exist
 from app.services.notify_helpers import collect_admin_emails
-from app.services.runtime_settings_store import merge_with_defaults, write_settings
+from app.services.runtime_settings_store import merge_with_defaults, read_settings, write_settings
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -41,6 +41,7 @@ class RuntimeSettingsIn(BaseModel):
     ageMin: int = Field(default=2012)
     ageMax: int = Field(default=2019)
     inscriptionsOuvertes: bool = Field(default=True)
+    accesParentsActif: bool = Field(default=True)
 
 
 class FinalSelectionIn(BaseModel):
@@ -103,8 +104,11 @@ def update_runtime_settings(
 ):
     _ = db, user
     data = payload.model_dump()
-    write_settings({**_default_runtime_settings(), **data})
-    return data
+    defaults = _default_runtime_settings()
+    # Fusionner avec le fichier existant pour ne pas perdre de clés futures / hors modèle.
+    merged = {**defaults, **read_settings(), **data}
+    write_settings(merged)
+    return merge_with_defaults(defaults)
 
 
 def _service_nom_normalized(nom: str) -> str:
