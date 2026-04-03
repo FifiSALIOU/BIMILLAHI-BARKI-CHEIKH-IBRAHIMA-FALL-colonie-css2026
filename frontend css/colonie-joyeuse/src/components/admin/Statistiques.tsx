@@ -1,26 +1,47 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useInscription } from '@/contexts/InscriptionContext';
-import { MOCK_PARENTS } from '@/data/mockData';
 import { Users, UserCheck, BarChart3, TrendingUp } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiRequest } from '@/lib/api';
 
 export default function Statistiques() {
   const { enfants } = useInscription();
+  const { token } = useAuth();
+  const [statsApi, setStatsApi] = useState<any>(null);
+  const [serviceStats, setServiceStats] = useState<Record<string, number>>({});
+  const [garcons, setGarcons] = useState(0);
+  const [filles, setFilles] = useState(0);
 
-  const principale = enfants.filter(e => e.liste === 'principale').length;
-  const n1 = enfants.filter(e => e.liste === 'attente_n1').length;
-  const n2 = enfants.filter(e => e.liste === 'attente_n2').length;
-  const garcons = enfants.filter(e => e.sexe === 'M').length;
-  const filles = enfants.filter(e => e.sexe === 'F').length;
-  const totalParents = new Set(enfants.map(e => e.parentMatricule)).size;
+  useEffect(() => {
+    if (!token) return;
+    Promise.all([
+      apiRequest('/admin/stats', { token }),
+      apiRequest<any[]>('/admin/users', { token }),
+      apiRequest<any[]>('/admin/listes/principale/demandes', { token }),
+      apiRequest<any[]>('/admin/listes/attente_n1/demandes', { token }),
+      apiRequest<any[]>('/admin/listes/attente_n2/demandes', { token }),
+    ])
+      .then(([stats, users, principaleRows, n1Rows, n2Rows]) => {
+        setStatsApi(stats);
+        const byService: Record<string, number> = {};
+        users.filter((u) => u.role === 'PARENT').forEach((u) => {
+          const s = u.parent_service || 'Non défini';
+          byService[s] = (byService[s] || 0) + 1;
+        });
+        setServiceStats(byService);
+        const all = [...principaleRows, ...n1Rows, ...n2Rows];
+        setGarcons(all.filter((r) => r?.enfant?.sexe === 'M').length);
+        setFilles(all.filter((r) => r?.enfant?.sexe === 'F').length);
+      })
+      .catch(() => undefined);
+  }, [token]);
 
-  const serviceStats = MOCK_PARENTS.reduce((acc, p) => {
-    const count = enfants.filter(e => e.parentMatricule === p.matricule).length;
-    if (count > 0) {
-      acc[p.service] = (acc[p.service] || 0) + count;
-    }
-    return acc;
-  }, {} as Record<string, number>);
+  const principale = useMemo(() => statsApi?.selected_by_liste?.principale ?? enfants.filter(e => e.liste === 'principale').length, [statsApi, enfants]);
+  const n1 = useMemo(() => statsApi?.selected_by_liste?.attente_n1 ?? enfants.filter(e => e.liste === 'attente_n1').length, [statsApi, enfants]);
+  const n2 = useMemo(() => statsApi?.selected_by_liste?.attente_n2 ?? enfants.filter(e => e.liste === 'attente_n2').length, [statsApi, enfants]);
+  const totalParents = statsApi?.total_parents ?? new Set(enfants.map(e => e.parentMatricule)).size;
+  const totalEnfants = statsApi?.total_enfants ?? enfants.length;
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
@@ -31,7 +52,7 @@ export default function Statistiques() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Total enfants', value: enfants.length, icon: Users, color: 'text-primary', bg: 'bg-primary/10' },
+          { label: 'Total enfants', value: totalEnfants, icon: Users, color: 'text-primary', bg: 'bg-primary/10' },
           { label: 'Parents inscrits', value: totalParents, icon: UserCheck, color: 'text-emerald-600', bg: 'bg-emerald-50' },
           { label: 'Garçons', value: garcons, icon: BarChart3, color: 'text-primary', bg: 'bg-primary/10' },
           { label: 'Filles', value: filles, icon: TrendingUp, color: 'text-accent', bg: 'bg-accent/10' },
@@ -58,19 +79,19 @@ export default function Statistiques() {
             <div>
               <div className="flex justify-between mb-1">
                 <span className="text-sm text-muted-foreground">Garçons</span>
-                <span className="text-sm font-medium text-foreground">{garcons} ({enfants.length > 0 ? Math.round((garcons / enfants.length) * 100) : 0}%)</span>
+                <span className="text-sm font-medium text-foreground">{garcons} ({totalEnfants > 0 ? Math.round((garcons / totalEnfants) * 100) : 0}%)</span>
               </div>
               <div className="h-3 bg-muted rounded-full overflow-hidden">
-                <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${enfants.length > 0 ? (garcons / enfants.length) * 100 : 0}%` }} />
+                <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${totalEnfants > 0 ? (garcons / totalEnfants) * 100 : 0}%` }} />
               </div>
             </div>
             <div>
               <div className="flex justify-between mb-1">
                 <span className="text-sm text-muted-foreground">Filles</span>
-                <span className="text-sm font-medium text-foreground">{filles} ({enfants.length > 0 ? Math.round((filles / enfants.length) * 100) : 0}%)</span>
+                <span className="text-sm font-medium text-foreground">{filles} ({totalEnfants > 0 ? Math.round((filles / totalEnfants) * 100) : 0}%)</span>
               </div>
               <div className="h-3 bg-muted rounded-full overflow-hidden">
-                <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${enfants.length > 0 ? (filles / enfants.length) * 100 : 0}%` }} />
+                <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${totalEnfants > 0 ? (filles / totalEnfants) * 100 : 0}%` }} />
               </div>
             </div>
           </div>

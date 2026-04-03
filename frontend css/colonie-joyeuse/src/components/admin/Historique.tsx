@@ -1,16 +1,23 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useInscription } from '@/contexts/InscriptionContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, Filter, History } from 'lucide-react';
 import { useState } from 'react';
+import { apiRequest } from '@/lib/api';
 
 export default function Historique() {
-  const { historique } = useInscription();
+  const { token } = useAuth();
+  const [historique, setHistorique] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('all');
+
+  useEffect(() => {
+    if (!token) return;
+    apiRequest<any[]>('/admin/historique', { token }).then(setHistorique).catch(() => undefined);
+  }, [token]);
 
   const filtered = historique.filter(h => {
     const matchSearch = searchTerm === '' ||

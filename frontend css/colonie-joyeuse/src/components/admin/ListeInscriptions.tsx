@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useInscription } from '@/contexts/InscriptionContext';
-import { calculateAge } from '@/data/mockData';
+import { useAuth } from '@/contexts/AuthContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FileDown, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,13 +8,66 @@ import { Input } from '@/components/ui/input';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { exportStyledExcel } from '@/lib/excelExport';
+import { apiRequest } from '@/lib/api';
+
+type Row = {
+  id: string;
+  parentMatricule: string;
+  parentNom: string;
+  parentPrenom: string;
+  parentService: string;
+  enfantNom: string;
+  enfantPrenom: string;
+  dateNaissance: string;
+  sexe: 'M' | 'F';
+  statut: string;
+  liste: 'principale' | 'attente_n1' | 'attente_n2';
+  dateInscription: string;
+};
+
+const age = (d: string) => {
+  const birth = new Date(d);
+  const today = new Date();
+  let a = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) a--;
+  return a;
+};
 
 export default function ListeInscriptions() {
-  const { enfants, parents } = useInscription();
+  const { token } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
+  const [rows, setRows] = useState<Row[]>([]);
 
-  const sortedEnfants = [...enfants].sort((a, b) =>
-    new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime()
+  useEffect(() => {
+    if (!token) return;
+    Promise.all([
+      apiRequest<any[]>('/admin/listes/principale/demandes', { token }),
+      apiRequest<any[]>('/admin/listes/attente_n1/demandes', { token }),
+      apiRequest<any[]>('/admin/listes/attente_n2/demandes', { token }),
+    ]).then(([p, n1, n2]) => {
+      const mapRows = (list: any[]): Row[] =>
+        list.map((d) => ({
+          id: String(d.demande_id),
+          parentMatricule: d.parent_matricule,
+          parentNom: d.parent_nom,
+          parentPrenom: d.parent_prenom,
+          parentService: d.parent_service || '',
+          enfantNom: d.enfant?.nom || '',
+          enfantPrenom: d.enfant?.prenom || '',
+          dateNaissance: d.enfant?.date_naissance || '',
+          sexe: d.enfant?.sexe === 'F' ? 'F' : 'M',
+          statut: d.liste === 'principale' ? 'Titulaire' : d.liste === 'attente_n1' ? 'Suppléant N1' : 'Suppléant N2',
+          liste: d.liste,
+          dateInscription: d.date_inscription,
+        }));
+      setRows([...mapRows(p), ...mapRows(n1), ...mapRows(n2)]);
+    }).catch(() => undefined);
+  }, [token]);
+
+  const sortedEnfants = useMemo(
+    () => [...rows].sort((a, b) => new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime()),
+    [rows],
   );
 
   const getStatutBadge = (statut: string) => {
@@ -36,18 +88,16 @@ export default function ListeInscriptions() {
     }
   };
 
-  const filtered = sortedEnfants.filter(e => {
+    const filtered = sortedEnfants.filter(e => {
     if (!searchTerm) return true;
-    const p = parents.find(x => x.matricule === e.parentMatricule);
     const s = searchTerm.toLowerCase();
-    return e.parentMatricule.toLowerCase().includes(s) || e.nom.toLowerCase().includes(s) || e.prenom.toLowerCase().includes(s) || (p?.nom || '').toLowerCase().includes(s);
+    return e.parentMatricule.toLowerCase().includes(s) || e.enfantNom.toLowerCase().includes(s) || e.enfantPrenom.toLowerCase().includes(s) || e.parentNom.toLowerCase().includes(s);
   });
 
   const generateData = () => {
     const headers = ['Rang', 'Matricule', 'Nom Parent', 'Prénom Parent', 'Service', 'Nom Enfant', 'Prénom Enfant', 'Âge', 'Sexe', 'Statut', 'Liste', 'Inscrit le'];
     const rows = filtered.map((e, i) => {
-      const p = parents.find(x => x.matricule === e.parentMatricule);
-      return [i + 1, e.parentMatricule, p?.nom || '', p?.prenom || '', p?.service || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'M' : 'F', e.statut, getListeLabel(e.liste), new Date(e.dateInscription).toLocaleDateString('fr-FR')];
+      return [i + 1, e.parentMatricule, e.parentNom || '', e.parentPrenom || '', e.parentService || '', e.enfantNom, e.enfantPrenom, age(e.dateNaissance), e.sexe === 'M' ? 'M' : 'F', e.statut, getListeLabel(e.liste), new Date(e.dateInscription).toLocaleDateString('fr-FR')];
     });
     return { headers, rows };
   };
@@ -79,7 +129,7 @@ export default function ListeInscriptions() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Toutes les inscriptions</h1>
-          <p className="text-muted-foreground mt-1">{enfants.length} inscription(s) — classées par ordre d'arrivée</p>
+          <p className="text-muted-foreground mt-1">{rows.length} inscription(s) — classées par ordre d'arrivée</p>
         </div>
         <div className="flex gap-2">
           <Button onClick={exportExcel} variant="outline" className="gap-2 rounded-lg">
@@ -117,17 +167,16 @@ export default function ListeInscriptions() {
             </TableHeader>
             <TableBody>
               {filtered.map((e, i) => {
-                const p = parents.find(x => x.matricule === e.parentMatricule);
                 return (
                   <TableRow key={e.id}>
                     <TableCell className="font-bold text-foreground text-center">{i + 1}</TableCell>
                     <TableCell className="font-mono tabular-nums text-sm">{e.parentMatricule}</TableCell>
-                    <TableCell>{p?.nom || '—'}</TableCell>
-                    <TableCell>{p?.prenom || '—'}</TableCell>
-                    <TableCell className="text-sm">{p?.service || '—'}</TableCell>
-                    <TableCell>{e.prenom}</TableCell>
-                    <TableCell className="font-medium">{e.nom}</TableCell>
-                    <TableCell>{calculateAge(e.dateNaissance)} ans</TableCell>
+                    <TableCell>{e.parentNom || '—'}</TableCell>
+                    <TableCell>{e.parentPrenom || '—'}</TableCell>
+                    <TableCell className="text-sm">{e.parentService || '—'}</TableCell>
+                    <TableCell>{e.enfantPrenom}</TableCell>
+                    <TableCell className="font-medium">{e.enfantNom}</TableCell>
+                    <TableCell>{age(e.dateNaissance)} ans</TableCell>
                     <TableCell>{e.sexe === 'M' ? 'M' : 'F'}</TableCell>
                     <TableCell>
                       <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground">{getListeLabel(e.liste)}</span>

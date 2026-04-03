@@ -1,22 +1,31 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useInscription } from '@/contexts/InscriptionContext';
 import { Users, UserCheck, Clock, TrendingUp, Award, HandMetal } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiRequest } from '@/lib/api';
 
 export default function AdminDashboard() {
-  const { enfants, getListeFinale, parents, settings } = useInscription();
+  const { enfants, parents, settings } = useInscription();
+  const { token } = useAuth();
+  const [statsApi, setStatsApi] = useState<any>(null);
 
-  const principale = enfants.filter(e => e.liste === 'principale').length;
-  const n1 = enfants.filter(e => e.liste === 'attente_n1').length;
-  const n2 = enfants.filter(e => e.liste === 'attente_n2').length;
-  const total = enfants.length;
-  const totalParents = new Set(enfants.map(e => e.parentMatricule)).size;
-  const listeFinale = getListeFinale();
-  const desistementsEnAttente = enfants.filter(e => e.desistement === 'demandé').length;
+  useEffect(() => {
+    if (!token) return;
+    apiRequest('/admin/stats', { token }).then(setStatsApi).catch(() => undefined);
+  }, [token]);
+
+  const principale = statsApi?.selected_by_liste?.principale ?? enfants.filter(e => e.liste === 'principale').length;
+  const n1 = statsApi?.selected_by_liste?.attente_n1 ?? enfants.filter(e => e.liste === 'attente_n1').length;
+  const n2 = statsApi?.selected_by_liste?.attente_n2 ?? enfants.filter(e => e.liste === 'attente_n2').length;
+  const total = statsApi?.total_demandes ?? enfants.length;
+  const totalParents = statsApi?.total_parents ?? new Set(enfants.map(e => e.parentMatricule)).size;
+  const listeFinaleCount = statsApi?.selected_total ?? 0;
+  const desistementsEnAttente = statsApi?.desistements_waiting ?? enfants.filter(e => e.desistement === 'demandé').length;
 
   const capaciteLabel = settings.capaciteMax !== null ? settings.capaciteMax : '∞';
-  const retenuLabel = settings.capaciteMax !== null ? `${listeFinale.length}/${settings.capaciteMax}` : `${listeFinale.length} (Non défini)`;
-  const fillPercent = settings.capaciteMax !== null && settings.capaciteMax > 0 ? Math.min((listeFinale.length / settings.capaciteMax) * 100, 100) : 0;
+  const retenuLabel = settings.capaciteMax !== null ? `${listeFinaleCount}/${settings.capaciteMax}` : `${listeFinaleCount} (Non défini)`;
+  const fillPercent = settings.capaciteMax !== null && settings.capaciteMax > 0 ? Math.min((listeFinaleCount / settings.capaciteMax) * 100, 100) : 0;
 
   const stats = [
     { label: 'Total inscriptions', value: total, icon: Users, color: 'text-primary', bg: 'bg-primary/10' },

@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useInscription } from '@/contexts/InscriptionContext';
-import { calculateAge, Enfant } from '@/data/mockData';
+import { useAuth } from '@/contexts/AuthContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FileDown, Search, Filter, Eye, Award, CheckCircle2, HandMetal, AlertTriangle, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,13 +11,47 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
 import { exportStyledExcel } from '@/lib/excelExport';
+import { apiRequest } from '@/lib/api';
+
+type Enfant = {
+  id: string;
+  demandeId: number;
+  parentMatricule: string;
+  prenom: string;
+  nom: string;
+  dateNaissance: string;
+  sexe: 'M' | 'F';
+  lienParente: string;
+  liste: 'principale' | 'attente_n1' | 'attente_n2';
+  statut: 'Titulaire' | 'Suppléant N1' | 'Suppléant N2';
+  dateInscription: string;
+  desistement?: 'demandé' | 'validé' | null;
+  dateDesistement?: string;
+  reinscrit?: boolean;
+  parentNom?: string;
+  parentPrenom?: string;
+  parentService?: string;
+  parentTelephone?: string;
+  parentSite?: string;
+};
+
+const calculateAge = (dateNaissance: string): number => {
+  const birth = new Date(dateNaissance);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+};
 
 export default function ListeFinale() {
-  const { getListeFinale, getEnfantsDesistesFinale, validerDesistement, parents, settings, addHistorique, isListeFinaleComplete, genererListeFinale, listeFinaleGeneree } = useInscription();
-  const enfantsRetenus = getListeFinale();
-  const enfantsDesistes = getEnfantsDesistesFinale();
+  const { token } = useAuth();
+  const [enfantsRetenus, setEnfantsRetenus] = useState<Enfant[]>([]);
+  const [enfantsDesistes, setEnfantsDesistes] = useState<Enfant[]>([]);
+  const [settings, setSettings] = useState<any>({ capaciteMax: null, dateFinInscriptions: null });
+  const [listeFinaleGeneree, setListeFinaleGeneree] = useState(false);
+  const [desistementsByDemande, setDesistementsByDemande] = useState<Record<number, number>>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSexe, setFilterSexe] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<'retenus' | 'desistes'>('retenus');
@@ -27,7 +60,61 @@ export default function ListeFinale() {
   const [desistTarget, setDesistTarget] = useState<Enfant | null>(null);
 
   const capaciteLabel = settings.capaciteMax !== null ? settings.capaciteMax : '∞';
-  const isComplete = isListeFinaleComplete();
+  const isComplete = settings.capaciteMax !== null ? enfantsRetenus.length >= settings.capaciteMax : false;
+
+  useEffect(() => {
+    if (!token) return;
+    Promise.all([
+      apiRequest<any>('/admin/settings', { token }),
+      apiRequest<any[]>('/admin/listes/principale/demandes', { token }),
+      apiRequest<any[]>('/admin/listes/attente_n1/demandes', { token }),
+      apiRequest<any[]>('/admin/listes/attente_n2/demandes', { token }),
+      apiRequest<any[]>('/admin/desistements/en-attente', { token }),
+    ]).then(([cfg, p, n1, n2, desistements]) => {
+      setSettings(cfg);
+      const mapRows = (list: any[]): Enfant[] =>
+        list.map((d: any) => ({
+          id: String(d.enfant?.id ?? d.demande_id),
+          demandeId: d.demande_id,
+          parentMatricule: d.parent_matricule,
+          prenom: d.enfant?.prenom || '',
+          nom: d.enfant?.nom || '',
+          dateNaissance: d.enfant?.date_naissance || '',
+          sexe: d.enfant?.sexe === 'F' ? 'F' : 'M',
+          lienParente: d.enfant?.lien_parente || '',
+          liste: d.liste,
+          statut: d.liste === 'principale' ? 'Titulaire' : d.liste === 'attente_n1' ? 'Suppléant N1' : 'Suppléant N2',
+          dateInscription: d.date_inscription,
+          parentNom: d.parent_nom,
+          parentPrenom: d.parent_prenom,
+          parentService: d.parent_service,
+          parentSite: d.parent_site_code || '',
+        }));
+      const all = [...mapRows(p), ...mapRows(n1), ...mapRows(n2)];
+      const priority = { principale: 0, attente_n1: 1, attente_n2: 2 } as const;
+      const ordered = all.sort((a, b) => {
+        const pa = priority[a.liste];
+        const pb = priority[b.liste];
+        if (pa !== pb) return pa - pb;
+        return new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime();
+      });
+      const cap = cfg?.capaciteMax;
+      const retenus = cap == null ? ordered : ordered.slice(0, cap);
+      setEnfantsRetenus(retenus);
+      const pending = desistements.map((x) => ({
+        ...retenus.find((r) => r.demandeId === x.demande_id),
+        desistement: 'demandé' as const,
+        dateDesistement: x.requested_at,
+      })).filter((x) => x.id) as Enfant[];
+      setEnfantsDesistes(pending);
+      setListeFinaleGeneree(true);
+      const idx: Record<number, number> = {};
+      desistements.forEach((x) => {
+        idx[x.demande_id] = x.desistement_id;
+      });
+      setDesistementsByDemande(idx);
+    }).catch(() => undefined);
+  }, [token]);
 
   const now = new Date();
   const dateFin = settings.dateFinInscriptions ? new Date(settings.dateFinInscriptions + 'T23:59:59') : null;
@@ -52,7 +139,7 @@ export default function ListeFinale() {
   };
 
   const filterList = (list: Enfant[]) => list.filter(e => {
-    const p = parents.find(x => x.matricule === e.parentMatricule);
+    const p = { nom: e.parentNom };
     const matchSearch = searchTerm === '' ||
       e.parentMatricule.toLowerCase().includes(searchTerm.toLowerCase()) ||
       e.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -67,15 +154,20 @@ export default function ListeFinale() {
 
   const handleValiderDesistement = () => {
     if (!desistTarget) return;
-    validerDesistement(desistTarget.id);
-    addHistorique({ utilisateur: 'Gestionnaire', role: 'Admin', action: 'Validation désistement (finale)', details: `A validé le désistement de ${desistTarget.prenom} ${desistTarget.nom} depuis la liste finale`, cible: `${desistTarget.prenom} ${desistTarget.nom}` });
+    const desistementId = desistementsByDemande[desistTarget.demandeId];
+    if (!desistementId) return;
+    apiRequest(`/admin/desistements/${desistementId}/valider`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ validated: true }),
+    }).then(() => undefined);
     toast({ title: '✅ Désistement validé', description: `${desistTarget.prenom} ${desistTarget.nom} a été retiré(e) de la liste finale. La liste se mettra à jour automatiquement.` });
     setConfirmDesistOpen(false); setDesistTarget(null);
   };
 
   const handleGenererListe = () => {
     if (!inscriptionsCloturees || listeFinaleGeneree) return;
-    genererListeFinale();
+    setListeFinaleGeneree(true);
     toast({ title: '✅ Liste finale générée', description: 'La liste finale a été générée automatiquement selon la priorité Principale > N1 > N2.' });
   };
 
@@ -83,8 +175,7 @@ export default function ListeFinale() {
     const baseHeaders = ['Rang', 'Matricule', 'Nom Parent', 'Prénom Parent', 'Téléphone', 'Service', 'Agence', 'Nom Enfant', 'Prénom Enfant', 'Âge', 'Sexe', 'Statut', "Liste d'origine"];
     const headers = isDesistes ? [...baseHeaders, 'Date du désistement'] : baseHeaders;
     const rows = list.map((e, i) => {
-      const p = parents.find(x => x.matricule === e.parentMatricule);
-      const baseRow = [i + 1, e.parentMatricule, p?.nom || '', p?.prenom || '', p?.telephone || '', p?.service || '', p?.site || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'Masculin' : 'Féminin', e.statut, getListeLabel(e.liste)];
+      const baseRow = [i + 1, e.parentMatricule, e.parentNom || '', e.parentPrenom || '', e.parentTelephone || '', e.parentService || '', e.parentSite || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'Masculin' : 'Féminin', e.statut, getListeLabel(e.liste)];
       if (isDesistes) {
         baseRow.push(e.dateDesistement ? new Date(e.dateDesistement).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—');
       }
@@ -145,7 +236,7 @@ export default function ListeFinale() {
             <TableRow><TableCell colSpan={isDesistes ? 15 : 14} className="text-center py-12 text-muted-foreground">Aucun enfant</TableCell></TableRow>
           ) : (
             list.map((e, i) => {
-              const p = parents.find(x => x.matricule === e.parentMatricule);
+              const p = { nom: e.parentNom, prenom: e.parentPrenom, telephone: e.parentTelephone, service: e.parentService, site: e.parentSite };
               return (
                 <TableRow key={e.id} className={e.desistement === 'validé' ? 'opacity-60' : ''}>
                   <TableCell className="font-bold text-foreground text-center">{i + 1}</TableCell>
@@ -297,7 +388,7 @@ export default function ListeFinale() {
         <DialogContent className="sm:max-w-lg rounded-xl">
           <DialogHeader><DialogTitle className="text-foreground">Détails de l'enfant</DialogTitle></DialogHeader>
           {detailEnfant && (() => {
-            const p = parents.find(x => x.matricule === detailEnfant.parentMatricule);
+            const p = { nom: detailEnfant.parentNom, prenom: detailEnfant.parentPrenom, service: detailEnfant.parentService };
             return (
               <div className="space-y-4">
                 <div className="flex items-center gap-2 flex-wrap">

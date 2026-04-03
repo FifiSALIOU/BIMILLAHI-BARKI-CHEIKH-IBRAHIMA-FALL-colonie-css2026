@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useInscription } from '@/contexts/InscriptionContext';
-import { calculateAge, Enfant } from '@/data/mockData';
+import { useAuth } from '@/contexts/AuthContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FileDown, Eye, Search, Filter, CheckCircle2, HandMetal, ThumbsDown } from 'lucide-react';
 import jsPDF from 'jspdf';
@@ -15,14 +15,49 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
+import { apiRequest } from '@/lib/api';
+
+type Enfant = {
+  id: string;
+  demandeId: number;
+  parentMatricule: string;
+  prenom: string;
+  nom: string;
+  dateNaissance: string;
+  sexe: 'M' | 'F';
+  lienParente: string;
+  liste: 'principale' | 'attente_n1' | 'attente_n2';
+  statut: 'Titulaire' | 'Suppléant N1' | 'Suppléant N2';
+  dateInscription: string;
+  validation: 'en_attente' | 'validé' | 'refusé';
+  motifRefus?: string;
+  desistement?: 'demandé' | 'validé' | null;
+  parentNom?: string;
+  parentPrenom?: string;
+  parentService?: string;
+  parentEmail?: string;
+  parentTelephone?: string;
+  rang: number;
+};
+
+const calculateAge = (dateNaissance: string): number => {
+  const birth = new Date(dateNaissance);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+};
 
 interface Props {
   type: 'principale' | 'attente_n1' | 'attente_n2';
 }
 
 export default function GestionListe({ type }: Props) {
-  const { getEnfantsByListe, transfererEnfant, validerDesistement, validerEnfant, refuserEnfant, parents, getRangDansListe, addHistorique, settings } = useInscription();
-  const enfants = getEnfantsByListe(type);
+  const { addHistorique, settings } = useInscription();
+  const { token } = useAuth();
+  const [enfants, setEnfants] = useState<Enfant[]>([]);
+  const [desistementsByDemande, setDesistementsByDemande] = useState<Record<number, number>>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSexe, setFilterSexe] = useState<string>('all');
   const [filterDesistement, setFilterDesistement] = useState<string>('all');
@@ -61,8 +96,44 @@ export default function GestionListe({ type }: Props) {
   // Transfer only allowed from principale/N1 to N2
   const canTransfer = type === 'principale' || type === 'attente_n1';
 
+  useEffect(() => {
+    if (!token) return;
+    const code = type === 'principale' ? 'principale' : type === 'attente_n1' ? 'attente_n1' : 'attente_n2';
+    Promise.all([
+      apiRequest<any[]>(`/admin/listes/${code}/demandes`, { token }),
+      apiRequest<any[]>('/admin/desistements/en-attente', { token }),
+    ]).then(([rows, desistements]) => {
+      const mapRows: Enfant[] = rows.map((d: any) => ({
+        id: String(d.enfant?.id ?? d.demande_id),
+        demandeId: d.demande_id,
+        parentMatricule: d.parent_matricule,
+        prenom: d.enfant?.prenom || '',
+        nom: d.enfant?.nom || '',
+        dateNaissance: d.enfant?.date_naissance || '',
+        sexe: d.enfant?.sexe === 'F' ? 'F' : 'M',
+        lienParente: d.enfant?.lien_parente || '',
+        liste: d.liste,
+        statut: d.liste === 'principale' ? 'Titulaire' : d.liste === 'attente_n1' ? 'Suppléant N1' : 'Suppléant N2',
+        dateInscription: d.date_inscription,
+        validation: d.statut === 'NON_VALIDEE' ? 'refusé' : d.statut === 'RETENUE' ? 'validé' : 'en_attente',
+        motifRefus: d.non_validation_reason || undefined,
+        desistement: desistements.some((x) => x.demande_id === d.demande_id) ? 'demandé' : null,
+        parentNom: d.parent_nom,
+        parentPrenom: d.parent_prenom,
+        parentService: d.parent_service,
+        rang: d.rang || 0,
+      }));
+      const idx: Record<number, number> = {};
+      desistements.forEach((x) => {
+        idx[x.demande_id] = x.desistement_id;
+      });
+      setDesistementsByDemande(idx);
+      setEnfants(mapRows);
+    }).catch(() => undefined);
+  }, [token, type]);
+
   const filteredEnfants = enfants.filter(e => {
-    const p = parents.find(x => x.matricule === e.parentMatricule);
+    const p = { nom: e.parentNom, prenom: e.parentPrenom };
     const matchSearch = searchTerm === '' ||
       e.parentMatricule.toLowerCase().includes(searchTerm.toLowerCase()) ||
       e.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -79,33 +150,56 @@ export default function GestionListe({ type }: Props) {
     return matchSearch && matchSexe && matchDesist;
   });
 
-  const handleTransfer = () => {
+  const handleTransfer = async () => {
     if (!transferTarget) return;
-    // Always transfer to N2
-    const targetListe = 'attente_n2';
-    transfererEnfant(transferTarget.id, targetListe as any);
+    const targetListe = type === 'principale' ? 'attente_n1' : 'attente_n2';
+    await apiRequest(`/admin/demandes/${transferTarget.demandeId}/transferer`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ to_liste_code: targetListe, reason: 'Transfert administratif' }),
+    });
     addHistorique({ utilisateur: 'Gestionnaire', role: 'Admin', action: 'Transfert', details: `A transféré ${transferTarget.prenom} ${transferTarget.nom} vers la Liste d'Attente N°2`, cible: `${transferTarget.prenom} ${transferTarget.nom}` });
     toast({ title: '✅ Demande transférée', description: `${transferTarget.prenom} ${transferTarget.nom} a été transféré(e) vers la Liste d'Attente N°2.` });
     setTransferOpen(false); setTransferTarget(null);
   };
 
-  const handleValiderDesistement = () => {
+  const handleValiderDesistement = async () => {
     if (!desistTarget) return;
-    validerDesistement(desistTarget.id);
+    const desistementId = desistementsByDemande[desistTarget.demandeId];
+    if (!desistementId) return;
+    await apiRequest(`/admin/desistements/${desistementId}/valider`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ validated: true }),
+    });
     addHistorique({ utilisateur: 'Gestionnaire', role: 'Admin', action: 'Validation désistement', details: `A validé le désistement de ${desistTarget.prenom} ${desistTarget.nom}`, cible: `${desistTarget.prenom} ${desistTarget.nom}` });
     toast({ title: '✅ Désistement validé', description: `Le désistement de ${desistTarget.prenom} ${desistTarget.nom} a été validé.` });
     setConfirmDesistOpen(false); setDesistTarget(null);
   };
 
-  const handleValider = (enfant: Enfant) => {
-    validerEnfant(enfant.id);
+  const handleValider = async (enfant: Enfant) => {
+    await apiRequest(`/admin/demandes/${enfant.demandeId}/selection-finale`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ is_selection_finale: true }),
+    });
     addHistorique({ utilisateur: 'Gestionnaire', role: 'Admin', action: 'Approbation', details: `A approuvé les informations de ${enfant.prenom} ${enfant.nom}`, cible: `${enfant.prenom} ${enfant.nom}` });
     toast({ title: '✅ Informations approuvées', description: `Les informations de ${enfant.prenom} ${enfant.nom} ont été validées.` });
   };
 
-  const handleRefuser = () => {
+  const handleRefuser = async () => {
     if (!refusTarget || !motifRefus.trim()) return;
-    refuserEnfant(refusTarget.id, motifRefus.trim());
+    await apiRequest(`/admin/demandes/${refusTarget.demandeId}/selection-finale`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ is_selection_finale: false, non_validation_reason: motifRefus.trim() }),
+    });
+    const targetListe = type === 'principale' ? 'attente_n1' : 'attente_n2';
+    await apiRequest(`/admin/demandes/${refusTarget.demandeId}/transferer`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ to_liste_code: targetListe, reason: `Refus conformité: ${motifRefus.trim()}` }),
+    });
     addHistorique({ utilisateur: 'Gestionnaire', role: 'Admin', action: 'Refus', details: `A refusé la demande de ${refusTarget.prenom} ${refusTarget.nom}. Motif : ${motifRefus.trim()}`, cible: `${refusTarget.prenom} ${refusTarget.nom}` });
     toast({ title: '❌ Demande refusée', description: `${refusTarget.prenom} ${refusTarget.nom} — Motif : ${motifRefus}` });
     setRefusOpen(false); setRefusTarget(null); setMotifRefus('');
@@ -114,8 +208,7 @@ export default function GestionListe({ type }: Props) {
   const generateCSV = () => {
     const headers = ['Rang', 'Matricule', 'Nom Parent', 'Prénom Parent', 'Service', 'Nom Enfant', 'Prénom Enfant', 'Âge', 'Sexe', 'Statut', 'Décision', 'Désistement'];
     const rows = filteredEnfants.map(e => {
-      const p = parents.find(x => x.matricule === e.parentMatricule);
-      return [getRangDansListe(e.id), e.parentMatricule, p?.nom || '', p?.prenom || '', p?.service || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'Masculin' : 'Féminin', e.statut, e.validation || 'en_attente', e.desistement || 'Aucun'];
+      return [e.rang, e.parentMatricule, e.parentNom || '', e.parentPrenom || '', e.parentService || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'Masculin' : 'Féminin', e.statut, e.validation || 'en_attente', e.desistement || 'Aucun'];
     });
     return { headers, rows };
   };
@@ -208,8 +301,8 @@ export default function GestionListe({ type }: Props) {
                 <TableRow><TableCell colSpan={12} className="text-center py-12 text-muted-foreground">Aucun enfant dans cette liste</TableCell></TableRow>
               ) : (
                 filteredEnfants.map(e => {
-                  const p = parents.find(x => x.matricule === e.parentMatricule);
-                  const rang = getRangDansListe(e.id);
+                  const p = { nom: e.parentNom, prenom: e.parentPrenom, service: e.parentService, email: e.parentEmail, telephone: e.parentTelephone };
+                  const rang = e.rang;
                   const validation = e.validation || 'en_attente';
                   return (
                     <TableRow key={e.id} className={e.desistement === 'validé' ? 'opacity-50' : ''}>
@@ -277,7 +370,7 @@ export default function GestionListe({ type }: Props) {
         <DialogContent className="sm:max-w-lg rounded-xl">
           <DialogHeader><DialogTitle className="text-foreground">Détails de la demande</DialogTitle></DialogHeader>
           {detailEnfant && (() => {
-            const p = parents.find(x => x.matricule === detailEnfant.parentMatricule);
+            const p = { nom: detailEnfant.parentNom, prenom: detailEnfant.parentPrenom, service: detailEnfant.parentService, email: detailEnfant.parentEmail, telephone: detailEnfant.parentTelephone };
             return (
               <div className="space-y-4">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -306,7 +399,7 @@ export default function GestionListe({ type }: Props) {
                     <div><span className="text-muted-foreground">Âge :</span> {calculateAge(detailEnfant.dateNaissance)} ans</div>
                     <div><span className="text-muted-foreground">Sexe :</span> {detailEnfant.sexe === 'M' ? 'Masculin' : 'Féminin'}</div>
                     <div><span className="text-muted-foreground">Lien :</span> {detailEnfant.lienParente}</div>
-                    <div><span className="text-muted-foreground">Rang :</span> {getRangDansListe(detailEnfant.id)}</div>
+                    <div><span className="text-muted-foreground">Rang :</span> {detailEnfant.rang}</div>
                   </div>
                 </div>
                 <div className="text-xs text-muted-foreground pt-2 border-t border-border">Inscrit le {new Date(detailEnfant.dateInscription).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
