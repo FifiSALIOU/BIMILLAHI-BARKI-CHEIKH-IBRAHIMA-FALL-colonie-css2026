@@ -75,6 +75,42 @@ def normalize_parent_telephone_for_storage(telephone: str | None, *, matricule: 
     return s[:191]
 
 
+TELEPHONE_DEJA_UTILISE_DETAIL = (
+    "Ce numéro de téléphone est déjà enregistré pour un autre compte parent. "
+    "Un même numéro ne peut pas être partagé entre deux comptes : utilisez un autre numéro, "
+    "ou connectez-vous avec le compte déjà associé à ce téléphone. "
+    "Pour toute aide, contactez l'administrateur."
+)
+
+
+def _telephone_digits_key(value: str | None) -> str | None:
+    """Même numéro saisi avec espaces, tirets ou + : une seule clé (chiffres uniquement). Les `tel:` sont ignorés."""
+    if not value:
+        return None
+    s = str(value).strip()
+    if not s or s.startswith("tel:"):
+        return None
+    digits = "".join(c for c in s if c.isdigit())
+    return digits if digits else None
+
+
+def raise_if_parent_telephone_conflict(db: Session, *, tel_stash: str | None, parent: Parent) -> None:
+    """Un numéro réel ne peut servir qu'à un seul parent. Comparaison sur les chiffres (évite les doublons « format différent »)."""
+    key = _telephone_digits_key(tel_stash)
+    if not key:
+        return
+    q = db.query(Parent)
+    if parent.id is not None:
+        q = q.filter(Parent.id != parent.id)
+    for other in q.all():
+        other_key = _telephone_digits_key(other.telephone)
+        if other_key and other_key == key:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=TELEPHONE_DEJA_UTILISE_DETAIL,
+            )
+
+
 def create_user_superadmin(
     *,
     db: Session,
@@ -130,6 +166,7 @@ def create_user_superadmin(
         )
         db.add(parent)
         db.flush()
+        raise_if_parent_telephone_conflict(db, tel_stash=telephone, parent=parent)
         return user
 
     if role in {UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN}:
@@ -243,7 +280,9 @@ def update_user(
         if parent_nom is not None:
             parent.nom = parent_nom
         if parent_telephone is not None:
-            parent.telephone = normalize_parent_telephone_for_storage(parent_telephone, matricule=parent.matricule)
+            tel = normalize_parent_telephone_for_storage(parent_telephone, matricule=parent.matricule)
+            raise_if_parent_telephone_conflict(db, tel_stash=tel, parent=parent)
+            parent.telephone = tel
         if parent_service is not None:
             service = _get_or_create_service(db, parent_service)
             parent.service_id = service.id

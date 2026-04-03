@@ -18,7 +18,6 @@ from app.schemas.inscriptions import (
     TransparenceInscriptionOut,
 )
 from app.services.inscriptions import (
-    TELEPHONE_DEJA_UTILISE_DETAIL,
     cancel_desistement,
     create_inscription_for_parent_user,
     ensure_listes_exist,
@@ -26,6 +25,7 @@ from app.services.inscriptions import (
     request_desistement,
     set_titulaire,
 )
+from app.services.users import TELEPHONE_DEJA_UTILISE_DETAIL
 from app.services.email import send_email, uniq_emails
 from app.services.notify_helpers import collect_admin_emails
 from app.services.runtime_settings_store import read_settings
