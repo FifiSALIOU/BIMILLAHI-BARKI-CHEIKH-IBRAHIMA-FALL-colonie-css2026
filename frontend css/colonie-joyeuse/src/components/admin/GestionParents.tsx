@@ -1,17 +1,50 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useInscription } from '@/contexts/InscriptionContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Search, Mail, Users, CheckCircle2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiRequest } from '@/lib/api';
+
+type ParentRow = {
+  userId: string;
+  matricule: string;
+  nom: string;
+  prenom: string;
+  service: string;
+  email?: string;
+  telephone?: string;
+  mailEnvoye?: boolean;
+};
 
 export default function GestionParents() {
-  const { parents, updateParent, addHistorique } = useInscription();
+  const { token } = useAuth();
+  const [parents, setParents] = useState<ParentRow[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedParents, setSelectedParents] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!token) return;
+    apiRequest<any[]>('/admin/users', { token }).then((rows) => {
+      setParents(
+        rows
+          .filter((u) => u.role === 'PARENT')
+          .map((u) => ({
+            userId: String(u.id),
+            matricule: u.matricule || '',
+            nom: u.last_name || '',
+            prenom: u.first_name || '',
+            service: u.parent_service || '',
+            email: u.parent_email || '',
+            telephone: u.parent_telephone || '',
+            mailEnvoye: false,
+          })),
+      );
+    }).catch(() => undefined);
+  }, [token]);
 
   const filtered = parents.filter(p => {
     if (!searchTerm) return true;
@@ -32,23 +65,25 @@ export default function GestionParents() {
     else setSelectedParents(new Set(filtered.map(p => p.matricule)));
   };
 
-  const handleSendResetEmails = () => {
+  const handleSendResetEmails = async () => {
     if (selectedParents.size === 0) {
       toast({ title: '⚠️ Aucun parent sélectionné', description: 'Veuillez cocher au moins un parent.' });
       return;
     }
-    selectedParents.forEach(matricule => {
-      updateParent(matricule, { mailEnvoye: true });
-    });
-    addHistorique({
-      utilisateur: 'Super Admin',
-      role: 'Admin',
-      action: 'Envoi mail',
-      details: `A envoyé ${selectedParents.size} e-mail(s) de réinitialisation de mot de passe`,
-    });
+    if (!token) return;
+    for (const matricule of selectedParents) {
+      const p = parents.find((x) => x.matricule === matricule);
+      if (!p) continue;
+      await apiRequest(`/admin/users/${p.userId}/reset-password`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ new_password: 'Passer123' }),
+      });
+    }
+    setParents((prev) => prev.map((p) => (selectedParents.has(p.matricule) ? { ...p, mailEnvoye: true } : p)));
     toast({
-      title: '📧 E-mails envoyés',
-      description: `${selectedParents.size} e-mail(s) de réinitialisation de mot de passe envoyé(s) avec succès.`,
+      title: '✅ Réinitialisation effectuée',
+      description: `${selectedParents.size} compte(s) parent réinitialisé(s) sur le mot de passe par défaut.`,
     });
     setSelectedParents(new Set());
   };

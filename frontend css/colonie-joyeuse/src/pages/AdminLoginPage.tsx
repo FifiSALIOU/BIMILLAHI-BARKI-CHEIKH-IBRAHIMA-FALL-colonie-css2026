@@ -93,11 +93,7 @@ export default function AdminLoginPage() {
               ← Retour à l'espace parent
             </Link>
 
-            <div className="bg-primary/5 rounded-lg p-3 border border-primary/10">
-              <p className="text-xs text-muted-foreground">
-                <strong className="text-primary">Test :</strong> admin@css.sn / admin123 (Gestionnaire) — superadmin@css.sn / admin123 (Super Admin)
-              </p>
-            </div>
+            
           </motion.div>
         </div>
       </motion.div>

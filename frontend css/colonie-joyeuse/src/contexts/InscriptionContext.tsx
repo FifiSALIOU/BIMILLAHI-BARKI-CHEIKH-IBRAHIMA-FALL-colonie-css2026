@@ -1,21 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Enfant, MOCK_ENFANTS, MOCK_PARENTS, MOCK_HISTORIQUE, AppSettings, DEFAULT_SETTINGS, Parent, HistoriqueEntry } from '@/data/mockData';
-
-function loadState<T>(key: string, fallback: T): T {
-  try {
-    const stored = localStorage.getItem(key);
-    if (stored) return JSON.parse(stored);
-  } catch {}
-  return fallback;
-}
-
-function usePersisted<T>(key: string, fallback: T): [T, React.Dispatch<React.SetStateAction<T>>] {
-  const [state, setState] = useState<T>(() => loadState(key, fallback));
-  useEffect(() => {
-    localStorage.setItem(key, JSON.stringify(state));
-  }, [key, state]);
-  return [state, setState];
-}
+import { Enfant, AppSettings, DEFAULT_SETTINGS, Parent, HistoriqueEntry } from '@/data/mockData';
 
 interface InscriptionContextType {
   enfants: Enfant[];
@@ -51,11 +35,11 @@ interface InscriptionContextType {
 const InscriptionContext = createContext<InscriptionContextType | undefined>(undefined);
 
 export function InscriptionProvider({ children }: { children: ReactNode }) {
-  const [enfants, setEnfants] = usePersisted<Enfant[]>('app_enfants', [...MOCK_ENFANTS]);
-  const [parents, setParents] = usePersisted<Parent[]>('app_parents', [...MOCK_PARENTS]);
-  const [settings, setSettings] = usePersisted<AppSettings>('app_settings', { ...DEFAULT_SETTINGS });
-  const [historique, setHistorique] = usePersisted<HistoriqueEntry[]>('app_historique', [...MOCK_HISTORIQUE]);
-  const [listeFinaleGeneree, setListeFinaleGeneree] = usePersisted<boolean>('app_liste_finale_generee', false);
+  const [enfants, setEnfants] = useState<Enfant[]>([]);
+  const [parents, setParents] = useState<Parent[]>([]);
+  const [settings, setSettings] = useState<AppSettings>({ ...DEFAULT_SETTINGS });
+  const [historique, setHistorique] = useState<HistoriqueEntry[]>([]);
+  const [listeFinaleGeneree, setListeFinaleGeneree] = useState<boolean>(false);
 
   const updateSettings = (s: Partial<AppSettings>) => {
     setSettings(prev => ({ ...prev, ...s }));

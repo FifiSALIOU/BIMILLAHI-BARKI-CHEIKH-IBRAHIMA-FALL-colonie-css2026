@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
-import { useInscription } from '@/contexts/InscriptionContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,7 +10,6 @@ import logo from '@/assets/logo.png';
 
 export default function ForgotPassword() {
   const { setAuthStep } = useAuth();
-  const { parents, updateParent } = useInscription();
   const [matricule, setMatricule] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
@@ -25,12 +23,6 @@ export default function ForgotPassword() {
       setErrorOpen(true);
       return;
     }
-    const parent = parents.find(p => p.matricule.toLowerCase() === matricule.trim().toLowerCase());
-    if (!parent) {
-      setErrorMessage('Matricule introuvable. Veuillez vérifier votre matricule.');
-      setErrorOpen(true);
-      return;
-    }
     if (newPwd.length < 6) {
       setErrorMessage('Le mot de passe doit contenir au moins 6 caractères.');
       setErrorOpen(true);
@@ -41,8 +33,8 @@ export default function ForgotPassword() {
       setErrorOpen(true);
       return;
     }
-    updateParent(parent.matricule, { motDePasse: newPwd });
-    setSuccessOpen(true);
+    setErrorMessage("Cette action ne modifie plus de données locales. Veuillez contacter l'administration pour la réinitialisation.");
+    setErrorOpen(true);
   };
 
   return (

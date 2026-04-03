@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,13 +8,33 @@ import { Calendar, Settings2, Shield, Mail } from 'lucide-react';
 import { useInscription } from '@/contexts/InscriptionContext';
 import { toast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiRequest } from '@/lib/api';
 
 export default function Parametres() {
   const { settings, updateSettings } = useInscription();
+  const { token } = useAuth();
   const [capaciteNonDefini, setCapaciteNonDefini] = useState(settings.capaciteMax === null);
   const [maxEnfantsNonDefini, setMaxEnfantsNonDefini] = useState(settings.maxEnfantsParParent === null);
 
-  const handleSave = () => {
+  useEffect(() => {
+    if (!token) return;
+    apiRequest<any>('/admin/settings', { token })
+      .then((cfg) => {
+        updateSettings(cfg);
+        setCapaciteNonDefini(cfg.capaciteMax === null);
+        setMaxEnfantsNonDefini(cfg.maxEnfantsParParent === null);
+      })
+      .catch(() => undefined);
+  }, [token]);
+
+  const handleSave = async () => {
+    if (!token) return;
+    await apiRequest('/admin/settings', {
+      method: 'PUT',
+      token,
+      body: JSON.stringify(settings),
+    });
     toast({ title: '✅ Paramètres enregistrés', description: 'Les paramètres ont été mis à jour avec succès.' });
   };
 

@@ -148,11 +148,7 @@ export default function LoginPage() {
               </p>
             </div>
 
-            <div className="bg-muted/50 rounded-lg p-3 border border-border">
-              <p className="text-xs text-muted-foreground">
-                <strong className="text-foreground">Test :</strong> Parent : CSS-2024-001 / parent123 — Admin : admin@css.sn / admin123 — Super Admin : superadmin@css.sn / admin123
-              </p>
-            </div>
+            
           </motion.div>
         </div>
       </motion.div>
