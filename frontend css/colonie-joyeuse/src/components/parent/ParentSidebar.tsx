@@ -34,9 +34,9 @@ export function ParentSidebar({ currentPage, onNavigate }: Props) {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton onClick={() => onNavigate('dashboard')} isActive={currentPage === 'dashboard'} tooltip="Tableau de bord">
+                <SidebarMenuButton onClick={() => onNavigate('dashboard')} isActive={currentPage === 'dashboard'} tooltip="Accueil">
                   <LayoutDashboard className="w-4 h-4" />
-                  {!collapsed && <span>Tableau de bord</span>}
+                  {!collapsed && <span>Accueil</span>}
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
