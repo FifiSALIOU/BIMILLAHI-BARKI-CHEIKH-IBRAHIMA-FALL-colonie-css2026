@@ -9,15 +9,35 @@ import { Search, Award } from 'lucide-react';
 interface ListeFinaleParentProps {
   apiListeFinale?: Enfant[];
   apiParents?: Parent[];
+  /** Si false en mode API : la liste n'est pas encore publiée (ex. avant clôture). */
+  apiListeFinalePubliee?: boolean;
 }
 
-export default function ListeFinaleParent({ apiListeFinale, apiParents }: ListeFinaleParentProps = {}) {
+export default function ListeFinaleParent({ apiListeFinale, apiParents, apiListeFinalePubliee = true }: ListeFinaleParentProps = {}) {
   const { getListeFinale, parents: ctxParents, listeFinaleGeneree } = useInscription();
   const [searchTerm, setSearchTerm] = useState('');
 
   const useApi = apiListeFinale !== undefined;
   const parents = apiParents ?? ctxParents;
   const listeFinale = useApi ? apiListeFinale! : getListeFinale();
+
+  if (useApi && !apiListeFinalePubliee) {
+    return (
+      <div className="max-w-7xl mx-auto space-y-6">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Award className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Liste finale des retenus</h1>
+              <p className="text-muted-foreground mt-1">La liste finale sera publiée après la clôture des inscriptions.</p>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   if (!useApi && !listeFinaleGeneree) {
     return (

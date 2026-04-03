@@ -148,14 +148,30 @@ _LISTE_ORDRE: dict[ListeCode, int] = {
 }
 
 
+def _inscriptions_cloturees() -> bool:
+    """True uniquement après la fin de la journée de dateFinInscriptions (comme le front admin)."""
+    fin = read_settings().get("dateFinInscriptions")
+    if fin is None or fin == "":
+        return False
+    try:
+        date_part = str(fin).split("T")[0]
+        end_local = datetime.fromisoformat(f"{date_part}T23:59:59")
+    except (ValueError, OSError):
+        return False
+    return datetime.now() > end_local
+
+
 @router.get("/liste-finale")
 def liste_finale_globale_parent(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles(UserRole.PARENT)),
 ):
-    """Liste finale globale consultable par le parent (lecture seule)."""
+    """Liste finale globale (lecture seule), publiée seulement après clôture des inscriptions."""
     _ = user
     ensure_listes_exist(db)
+
+    if not _inscriptions_cloturees():
+        return {"disponible": False, "retenus": []}
 
     raw_settings = read_settings()
     capacite_max = raw_settings.get("capaciteMax", 100)
@@ -206,7 +222,7 @@ def liste_finale_globale_parent(
                 "enfant_sexe": e.sexe.value,
             }
         )
-    return out
+    return {"disponible": True, "retenus": out}
 
 
 @router.get("/inscriptions-transparence", response_model=list[TransparenceInscriptionOut])

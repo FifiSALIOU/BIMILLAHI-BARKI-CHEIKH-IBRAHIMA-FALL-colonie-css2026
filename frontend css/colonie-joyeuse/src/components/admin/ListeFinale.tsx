@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -46,6 +46,13 @@ const calculateAge = (dateNaissance: string): number => {
   return age;
 };
 
+/** Liste finale : calculée uniquement après la fin de la journée de date de clôture. */
+function areInscriptionsClosed(cfg: { dateFinInscriptions?: string | null }): boolean {
+  if (!cfg?.dateFinInscriptions) return false;
+  const dateFin = new Date(`${cfg.dateFinInscriptions}T23:59:59`);
+  return new Date() > dateFin;
+}
+
 export default function ListeFinale() {
   const { token } = useAuth();
   const [enfantsRetenus, setEnfantsRetenus] = useState<Enfant[]>([]);
@@ -73,6 +80,14 @@ export default function ListeFinale() {
       apiRequest<any[]>('/admin/desistements/en-attente', { token }),
     ]).then(([cfg, p, n1, n2, desistements]) => {
       setSettings(cfg);
+      const cloture = areInscriptionsClosed(cfg);
+      if (!cloture) {
+        setEnfantsRetenus([]);
+        setEnfantsDesistes([]);
+        setListeFinaleGeneree(false);
+        setDesistementsByDemande({});
+        return;
+      }
       const mapRows = (list: any[]): Enfant[] =>
         list.map((d: any) => {
           const lu = listeApiToUi(d.liste);
@@ -293,7 +308,13 @@ export default function ListeFinale() {
           <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center"><Award className="w-5 h-5 text-emerald-600" /></div>
           <div>
             <h1 className="text-2xl font-bold text-foreground">Liste finale des enfants retenus</h1>
-            <p className="text-muted-foreground mt-1"><strong>{enfantsRetenus.length}</strong>/{capaciteLabel} enfant(s) retenu(s) pour la colonie</p>
+            <p className="text-muted-foreground mt-1">
+              {inscriptionsCloturees ? (
+                <><strong>{enfantsRetenus.length}</strong>/{capaciteLabel} enfant(s) retenu(s) pour la colonie</>
+              ) : (
+                <>La liste des retenus n&apos;est pas encore établie — elle le sera <strong>automatiquement après la clôture des inscriptions</strong>.</>
+              )}
+            </p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -304,8 +325,8 @@ export default function ListeFinale() {
           >
               <Sparkles className="w-4 h-4" />Générer la liste finale
           </Button>
-          <Button onClick={() => handleHeaderExport('csv')} variant="outline" className="gap-2 rounded-lg"><FileDown className="w-4 h-4" />Export Excel</Button>
-          <Button onClick={() => handleHeaderExport('pdf')} variant="outline" className="gap-2 rounded-lg"><FileDown className="w-4 h-4" />Export PDF</Button>
+          <Button onClick={() => handleHeaderExport('csv')} variant="outline" className="gap-2 rounded-lg" disabled={!inscriptionsCloturees}><FileDown className="w-4 h-4" />Export Excel</Button>
+          <Button onClick={() => handleHeaderExport('pdf')} variant="outline" className="gap-2 rounded-lg" disabled={!inscriptionsCloturees}><FileDown className="w-4 h-4" />Export PDF</Button>
         </div>
       </motion.div>
 
@@ -316,12 +337,12 @@ export default function ListeFinale() {
 
       {!inscriptionsCloturees && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
-          Le bouton <strong>Générer la liste finale</strong> sera activé uniquement après la fin des inscriptions.
+          Aucun enfant n&apos;apparaît ici tant que les inscriptions sont ouvertes. Après la date de fin configurée, la liste des retenus sera calculée automatiquement (priorité Principale, puis N°1, puis N°2, dans la limite des places). Le bouton <strong>Générer la liste finale</strong> sert à confirmer l&apos;étape une fois la période close.
         </div>
       )}
 
       {/* Progress */}
-      {settings.capaciteMax !== null && (
+      {inscriptionsCloturees && settings.capaciteMax !== null && (
         <div className="bg-card rounded-xl border border-border p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-foreground">Taux de remplissage</span>
@@ -371,8 +392,8 @@ export default function ListeFinale() {
 
         <TabsContent value="desistes" className="mt-4">
           <div className="flex gap-2 mb-4">
-            <Button onClick={() => exportList(filteredDesistes, 'enfants_desistes', 'csv', true)} variant="outline" className="gap-2 rounded-lg"><FileDown className="w-4 h-4" />Export Excel</Button>
-            <Button onClick={() => exportList(filteredDesistes, 'enfants_desistes', 'pdf', true)} variant="outline" className="gap-2 rounded-lg"><FileDown className="w-4 h-4" />Export PDF</Button>
+            <Button onClick={() => exportList(filteredDesistes, 'enfants_desistes', 'csv', true)} variant="outline" className="gap-2 rounded-lg" disabled={!inscriptionsCloturees}><FileDown className="w-4 h-4" />Export Excel</Button>
+            <Button onClick={() => exportList(filteredDesistes, 'enfants_desistes', 'pdf', true)} variant="outline" className="gap-2 rounded-lg" disabled={!inscriptionsCloturees}><FileDown className="w-4 h-4" />Export PDF</Button>
           </div>
           {enfantsDesistes.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">

@@ -25,13 +25,15 @@ import ListeFinaleParent from '@/components/parent/ListeFinaleParent';
 
 export default function ParentDashboard() {
   const { parent, token } = useAuth();
-  const { settings, addHistorique, listeFinaleGeneree } = useInscription();
+  const { settings, addHistorique } = useInscription();
 
   const [mesEnfants, setMesEnfants] = useState<Enfant[]>([]);
   const [transparenceEnfants, setTransparenceEnfants] = useState<Enfant[]>([]);
   const [transparenceParents, setTransparenceParents] = useState<Parent[]>([]);
   const [listeFinaleApiEnfants, setListeFinaleApiEnfants] = useState<Enfant[]>([]);
   const [listeFinaleApiParents, setListeFinaleApiParents] = useState<Parent[]>([]);
+  /** Aligné sur le serveur : liste finale publiée seulement après clôture des inscriptions. */
+  const [listeFinaleApiPubliee, setListeFinaleApiPubliee] = useState(false);
 
   const loadAll = useCallback(async () => {
     if (!token || !parent) return;
@@ -45,15 +47,17 @@ export default function ParentDashboard() {
       setTransparenceEnfants(rows.map(mapTransparenceRowToEnfant));
       setTransparenceParents(parentsFromTransparence(rows));
 
-      let finaleRaw: ListeFinaleRowApi[] = [];
       try {
-        finaleRaw = await apiRequest<ListeFinaleRowApi[]>('/parent/liste-finale', { token });
+        const finaleRes = await apiRequest<{ disponible: boolean; retenus: ListeFinaleRowApi[] }>('/parent/liste-finale', { token });
+        const fin = finaleRes?.retenus ?? [];
+        setListeFinaleApiPubliee(!!finaleRes?.disponible);
+        setListeFinaleApiEnfants(fin.map(mapListeFinaleRowToEnfant));
+        setListeFinaleApiParents(parentsFromListeFinale(fin));
       } catch {
-        finaleRaw = [];
+        setListeFinaleApiPubliee(false);
+        setListeFinaleApiEnfants([]);
+        setListeFinaleApiParents([]);
       }
-      const fin = finaleRaw || [];
-      setListeFinaleApiEnfants(fin.map(mapListeFinaleRowToEnfant));
-      setListeFinaleApiParents(parentsFromListeFinale(fin));
     } catch (e) {
       console.error(e);
     }
@@ -83,6 +87,12 @@ export default function ParentDashboard() {
   const [highlightedEnfantId, setHighlightedEnfantId] = useState<string | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    if (!listeFinaleApiPubliee && activeTab === 'liste_finale') {
+      setActiveTab('principale');
+    }
+  }, [listeFinaleApiPubliee, activeTab]);
 
   if (!parent) return null;
 
@@ -518,20 +528,20 @@ export default function ParentDashboard() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full" style={{ gridTemplateColumns: inscriptionsCloturees && (listeFinaleGeneree || listeFinaleApiEnfants.length > 0) ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)' }}>
+          <TabsList className="grid w-full" style={{ gridTemplateColumns: listeFinaleApiPubliee ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)' }}>
             <TabsTrigger value="principale">Liste Principale</TabsTrigger>
             <TabsTrigger value="attente_n1">Liste N°1</TabsTrigger>
             <TabsTrigger value="attente_n2">Liste N°2</TabsTrigger>
-            {inscriptionsCloturees && (listeFinaleGeneree || listeFinaleApiEnfants.length > 0) && (
+            {listeFinaleApiPubliee && (
               <TabsTrigger value="liste_finale">Liste Finale</TabsTrigger>
             )}
           </TabsList>
           <TabsContent value="principale">{renderListeTable('principale')}</TabsContent>
           <TabsContent value="attente_n1">{renderListeTable('attente_n1')}</TabsContent>
           <TabsContent value="attente_n2">{renderListeTable('attente_n2')}</TabsContent>
-          {inscriptionsCloturees && (listeFinaleGeneree || listeFinaleApiEnfants.length > 0) && (
+          {listeFinaleApiPubliee && (
             <TabsContent value="liste_finale">
-              <ListeFinaleParent apiListeFinale={listeFinaleApiEnfants} apiParents={listeFinaleApiParents} />
+              <ListeFinaleParent apiListeFinale={listeFinaleApiEnfants} apiParents={listeFinaleApiParents} apiListeFinalePubliee />
             </TabsContent>
           )}
         </Tabs>
