@@ -10,15 +10,11 @@ export type OrdreArriveeInput = {
   dateInscription: string;
   updatedAt?: string | null;
   reinscrit?: boolean;
-  /** Désistement validé (statut DESISTEE) : `updated_at` = validation gestionnaire — évite de retomber sur l’ancienne `date_inscription`. */
+  /** Désistement validé : n’influence pas le tri (la ligne reste à sa place dans la liste ; `updated_at` sert surtout à l’affichage date côté API). */
   desistementValide?: boolean;
 };
 
 export function instantOrdreArrivee(row: OrdreArriveeInput): number {
-  if (row.desistementValide && row.updatedAt) {
-    const tu = new Date(row.updatedAt).getTime();
-    if (!Number.isNaN(tu)) return tu;
-  }
   if (row.reinscrit && row.updatedAt) {
     const tu = new Date(row.updatedAt).getTime();
     if (!Number.isNaN(tu)) return tu;
