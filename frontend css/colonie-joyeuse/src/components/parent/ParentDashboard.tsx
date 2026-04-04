@@ -132,7 +132,8 @@ export default function ParentDashboard() {
   const handleSetTitulaire = (id: string, name: string) => { setSelectedId(id); setSelectedName(name); setConfirmOpen(true); };
   const confirmChange = async () => {
     const e = enfants.find((x) => x.id === selectedId);
-    if (!e?.enfantDbId || !token) {
+    /** L’API `/parent/titulaire` attend en priorité l’id de la demande (`DemandeOut.id`). */
+    if (!e?.demandeId || !token) {
       setConfirmOpen(false);
       return;
     }
@@ -140,7 +141,7 @@ export default function ParentDashboard() {
       await apiRequest('/parent/titulaire', {
         method: 'POST',
         token,
-        body: JSON.stringify({ enfant_id_titulaire: e.enfantDbId }),
+        body: JSON.stringify({ enfant_id_titulaire: e.demandeId }),
       });
       await loadAll();
       addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Changement titulaire', details: `A défini ${selectedName} comme titulaire`, cible: selectedName });
@@ -155,12 +156,12 @@ export default function ParentDashboard() {
   const isTitulaireDesistement = desistementTarget?.statut === 'Titulaire';
 
   const handleSwapAndDesist = async () => {
-    if (!enfantN1?.enfantDbId || !token) return;
+    if (!enfantN1?.demandeId || !token) return;
     try {
       await apiRequest('/parent/titulaire', {
         method: 'POST',
         token,
-        body: JSON.stringify({ enfant_id_titulaire: enfantN1.enfantDbId }),
+        body: JSON.stringify({ enfant_id_titulaire: enfantN1.demandeId }),
       });
       await loadAll();
       addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Changement titulaire', details: `A défini ${enfantN1.prenom} ${enfantN1.nom} comme titulaire avant désistement`, cible: `${enfantN1.prenom} ${enfantN1.nom}` });
